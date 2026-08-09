@@ -47,6 +47,17 @@ public interface MessageRepository
     List<MessageEntity> findByCategorySourceAndCategoryConfidenceLessThanOrderByReceivedAtDesc(
             CategorySource source, float threshold);
 
+    /**
+     * Everything the categoriser never settled: rows that predate the feature, plus anything left
+     * in the fallback by a sidecar outage. Oldest first, so a bounded run works forward in a
+     * predictable order rather than re-drawing the same recent slice each time.
+     */
+    @Query(
+            "select m from MessageEntity m where m.categorySource is null"
+                    + " or m.categorySource = com.janne6565.hermes.model.core.CategorySource.NONE"
+                    + " order by m.receivedAt asc")
+    List<MessageEntity> findUncategorised();
+
     long countByClassifiedBy(ClassifiedBy classifiedBy);
 
     long countByPriority(Priority priority);

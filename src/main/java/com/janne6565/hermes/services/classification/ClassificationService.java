@@ -1,6 +1,7 @@
 package com.janne6565.hermes.services.classification;
 
 import com.janne6565.hermes.client.SidecarClient;
+import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.entity.CategoryEntity;
 import com.janne6565.hermes.entity.CategoryRuleEntity;
 import com.janne6565.hermes.entity.MessageEntity;
@@ -40,6 +41,7 @@ public class ClassificationService {
     private final NotificationService notificationService;
     private final CategoryMatcher categoryMatcher;
     private final CategoryService categoryService;
+    private final HermesProperties properties;
 
     /**
      * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
@@ -139,9 +141,16 @@ public class ClassificationService {
     /**
      * Resolves both axes for a freshly fetched message.
      *
-     * <p>Category resolution deliberately piggybacks on the priority decision rather than adding a
-     * second model call. A priority rule hit still means no LLM turn, so the category comes from a
-     * category rule or not at all — the cost profile of the pipeline is unchanged by this feature.
+     * <p>The two axes are resolved independently, and that costs something. A priority rule hit
+     * used to end the pipeline with no LLM turn at all; now, if no category rule also matched, the
+     * classifier is still asked — for the category alone, with its priority verdict discarded,
+     * because a hard rule outranks the model on that axis.
+     *
+     * <p>The alternative was leaving those messages permanently uncategorised, which is what the
+     * first cut did: about a third of this mailbox is settled by hard rules, so a third of the
+     * categories screen was a single grey bar. A feature that only works for the mail the model
+     * happens to see is not worth the column. Switchable via
+     * {@code hermes.categories.classify-rule-hits} when credit matters more than coverage.
      */
     private Verdict classify(FetchedMessage fetched) {
         Optional<CategoryRuleEntity> categoryRule = categoryMatcher.match(fetched);
@@ -158,7 +167,7 @@ public class ClassificationService {
                     match.reason(),
                     truncateSubject(fetched),
                     ClassifiedBy.RULE,
-                    byRule != null ? byRule : unresolvedCategory());
+                    byRule != null ? byRule : categoryOnly(fetched));
         }
 
         Optional<SidecarClient.ClassificationResponse> llm =
@@ -187,6 +196,31 @@ public class ClassificationService {
                                         truncateSubject(fetched),
                                         ClassifiedBy.FALLBACK,
                                         byRule != null ? byRule : unresolvedCategory()));
+    }
+
+    /**
+     * Asks the classifier for a category when a priority rule already answered the other question.
+     *
+     * <p>The response's priority is read and thrown away on purpose: the rule won that axis before
+     * this call was made, and letting the model's opinion in through the back door is exactly the
+     * leak the two-axis separation exists to prevent.
+     */
+    private CategoryVerdict categoryOnly(FetchedMessage fetched) {
+        if (!properties.getCategories().isClassifyRuleHits()) {
+            return unresolvedCategory();
+        }
+        return sidecarClient
+                .classify(
+                        new SidecarClient.ClassificationRequest(
+                                fetched.sender(),
+                                fetched.subject(),
+                                fetched.snippet(),
+                                categoryService.names()))
+                .map(this::fromModel)
+                // A sidecar outage must not turn a perfectly good rule verdict into a failure. The
+                // message keeps its priority and lands in the fallback bucket, where the backfill
+                // will find it later.
+                .orElseGet(this::unresolvedCategory);
     }
 
     /** Maps the classifier's free-text category name onto a row, or gives up cleanly. */

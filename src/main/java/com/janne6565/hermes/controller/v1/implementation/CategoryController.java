@@ -4,8 +4,10 @@ import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.controller.v1.schema.CategoryApi;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
+import com.janne6565.hermes.model.core.CategoryBackfillDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
+import com.janne6565.hermes.services.categories.CategoryBackfillService;
 import com.janne6565.hermes.services.categories.CategoryService;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CategoryController implements CategoryApi {
 
     private final CategoryService categoryService;
+    private final CategoryBackfillService categoryBackfillService;
     private final HermesProperties properties;
 
     @Override
@@ -35,6 +38,11 @@ public class CategoryController implements CategoryApi {
     public ResponseEntity<Void> delete(UUID id) {
         categoryService.delete(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @Override
+    public ResponseEntity<CategoryBackfillDto> backfill(int limit) {
+        return ResponseEntity.ok(categoryBackfillService.run(limit));
     }
 
     @Override
