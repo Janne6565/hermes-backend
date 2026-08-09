@@ -106,7 +106,13 @@ public class HealthService {
 
         // Mail not being read is the only red. A degraded classifier still stores everything,
         // and a not-yet-connected account is amber (setup pending), never red.
-        String status = !syncOk ? "broken" : (connected && sidecarOk ? "ok" : "degraded");
+        //
+        // Parked fallback messages count as degraded too. They did not, and the screen therefore
+        // rendered its own "DEGRADED — n unclassified" notice under a headline that said "All
+        // good": the one place a reader looks to decide whether to trust the triage was the one
+        // place that disagreed with itself.
+        boolean healthy = connected && sidecarOk && fallback == 0;
+        String status = !syncOk ? "broken" : (healthy ? "ok" : "degraded");
 
         return new HealthDto(
                 status,
