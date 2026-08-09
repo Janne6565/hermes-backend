@@ -9,8 +9,8 @@ import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.classification.MessageQueryService;
 import com.janne6565.hermes.services.mail.MailSyncService;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.UUID;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
@@ -30,11 +30,12 @@ public class MessageController implements MessageApi {
             LocalDate before,
             String sender,
             ClassifiedBy classifiedBy,
+            String category,
             String q,
             int limit) {
         return ResponseEntity.ok(
                 messageQueryService.search(
-                        priority, date, after, before, sender, classifiedBy, q, limit));
+                        priority, date, after, before, sender, classifiedBy, category, q, limit));
     }
 
     @Override

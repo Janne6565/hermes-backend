@@ -38,7 +38,7 @@ public class MessageQueryService {
     @Transactional(readOnly = true)
     public List<MessageDto> search(
             Priority priority, LocalDate date, String sender, String query, int limit) {
-        return search(priority, date, null, null, sender, null, query, limit);
+        return search(priority, date, null, null, sender, null, null, query, limit);
     }
 
     /**
@@ -55,6 +55,7 @@ public class MessageQueryService {
             LocalDate before,
             String sender,
             ClassifiedBy classifiedBy,
+            String category,
             String query,
             int limit) {
         Specification<MessageEntity> specification =
@@ -86,6 +87,15 @@ public class MessageQueryService {
                     }
                     if (classifiedBy != null) {
                         predicates.add(builder.equal(root.get("classifiedBy"), classifiedBy));
+                    }
+                    if (category != null && !category.isBlank()) {
+                        // By name, not id: this backs a text query language where the user types
+                        // `category:Billing`, and a UUID in a search box helps nobody. An inner
+                        // join is right here — a message with no category cannot be in one.
+                        predicates.add(
+                                builder.equal(
+                                        builder.lower(root.join("category").get("name")),
+                                        category.trim().toLowerCase(Locale.ROOT)));
                     }
                     if (sender != null && !sender.isBlank()) {
                         predicates.add(
