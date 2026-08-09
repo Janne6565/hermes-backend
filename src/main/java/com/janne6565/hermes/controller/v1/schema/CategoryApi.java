@@ -87,6 +87,17 @@ public interface CategoryApi {
                     @RequestParam(defaultValue = "200")
                     int limit);
 
+    @DeleteMapping("/rules/{ruleId}")
+    @Operation(
+            summary = "Remove one pattern from a category",
+            description =
+                    "Mail already filed by this rule keeps its category — the rule explains how a"
+                        + " message got there, not where it belongs, and re-opening settled mail"
+                        + " would be a far larger action than this button implies.")
+    @ApiResponse(responseCode = "204", description = "Rule deleted")
+    @ApiResponse(responseCode = "404", description = "No such rule")
+    ResponseEntity<Void> deleteRule(@PathVariable UUID ruleId);
+
     @PostMapping("/assign")
     @Operation(
             summary = "\"This mail is about X\"",
