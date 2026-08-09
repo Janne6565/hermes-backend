@@ -4,6 +4,7 @@ import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.model.core.Priority;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -147,8 +148,27 @@ public class SidecarClient {
         public record Credentials(boolean oauthToken, boolean apiKeyUnset, Instant expiresAt) {}
     }
 
-    /** Exactly the fields the plan permits leaving the cluster: sender, subject, short snippet. */
-    public record ClassificationRequest(String sender, String subject, String snippet) {}
+    /**
+     * Exactly the fields the plan permits leaving the cluster: sender, subject, short snippet.
+     *
+     * @param categories the vocabulary the classifier must pick a category from. Sent rather than
+     *     hard-coded in the prompt because the user can add categories at runtime, and a model
+     *     answering with a bucket that no longer exists is a silent miscategorisation.
+     */
+    public record ClassificationRequest(
+            String sender, String subject, String snippet, List<String> categories) {}
 
-    public record ClassificationResponse(Priority priority, String reason, String summary) {}
+    /**
+     * @param category one of the names from the request, or null if the classifier declined.
+     * @param categoryConfidence 0..1; below the configured threshold the message is queued for the
+     *     user rather than accepted quietly.
+     * @param categoryAlternative the runner-up, offered as the second chip in that queue.
+     */
+    public record ClassificationResponse(
+            Priority priority,
+            String reason,
+            String summary,
+            String category,
+            Float categoryConfidence,
+            String categoryAlternative) {}
 }

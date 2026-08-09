@@ -1,12 +1,17 @@
 package com.janne6565.hermes.services.classification;
 
 import com.janne6565.hermes.client.SidecarClient;
+import com.janne6565.hermes.entity.CategoryEntity;
+import com.janne6565.hermes.entity.CategoryRuleEntity;
 import com.janne6565.hermes.entity.MessageEntity;
+import com.janne6565.hermes.model.core.CategorySource;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.MessageRepository;
+import com.janne6565.hermes.services.categories.CategoryMatcher;
+import com.janne6565.hermes.services.categories.CategoryService;
 import com.janne6565.hermes.services.notification.NotificationService;
 import com.janne6565.hermes.services.rules.RuleEngine;
 import java.util.List;
@@ -33,6 +38,8 @@ public class ClassificationService {
     private final SidecarClient sidecarClient;
     private final MessageRepository messageRepository;
     private final NotificationService notificationService;
+    private final CategoryMatcher categoryMatcher;
+    private final CategoryService categoryService;
 
     /**
      * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
@@ -70,6 +77,7 @@ public class ClassificationService {
                         .classifiedBy(verdict.classifiedBy())
                         .build();
 
+        applyCategory(message, verdict.category());
         messageRepository.save(message);
 
         if (verdict.priority() == Priority.HIGH) {
@@ -102,7 +110,8 @@ public class ClassificationService {
                             new SidecarClient.ClassificationRequest(
                                     message.getSender(),
                                     message.getSubject(),
-                                    message.getSnippet()));
+                                    message.getSnippet(),
+                                    categoryService.names()));
             if (response.isEmpty()) {
                 log.warn("Sidecar went unhealthy mid-retry; stopping after {} messages", repaired);
                 break;
@@ -112,6 +121,12 @@ public class ClassificationService {
             message.setReason(verdict.reason());
             message.setSummary(verdict.summary());
             message.setClassifiedBy(ClassifiedBy.LLM);
+            // Only fill a category the pipeline never resolved. A rule hit or the user's own
+            // correction outranks the retry, which is running hours after they made the call.
+            if (message.getCategorySource() == null
+                    || message.getCategorySource() == CategorySource.NONE) {
+                applyCategory(message, fromModel(verdict));
+            }
             repaired++;
         }
 
@@ -121,18 +136,38 @@ public class ClassificationService {
         return repaired;
     }
 
+    /**
+     * Resolves both axes for a freshly fetched message.
+     *
+     * <p>Category resolution deliberately piggybacks on the priority decision rather than adding a
+     * second model call. A priority rule hit still means no LLM turn, so the category comes from a
+     * category rule or not at all — the cost profile of the pipeline is unchanged by this feature.
+     */
     private Verdict classify(FetchedMessage fetched) {
+        Optional<CategoryRuleEntity> categoryRule = categoryMatcher.match(fetched);
+        CategoryVerdict byRule =
+                categoryRule
+                        .map(rule -> new CategoryVerdict(rule.getCategory(), CategorySource.RULE))
+                        .orElse(null);
+
         Optional<RuleEngine.Match> ruleMatch = ruleEngine.evaluate(fetched);
         if (ruleMatch.isPresent()) {
             RuleEngine.Match match = ruleMatch.get();
             return new Verdict(
-                    match.priority(), match.reason(), truncateSubject(fetched), ClassifiedBy.RULE);
+                    match.priority(),
+                    match.reason(),
+                    truncateSubject(fetched),
+                    ClassifiedBy.RULE,
+                    byRule != null ? byRule : unresolvedCategory());
         }
 
         Optional<SidecarClient.ClassificationResponse> llm =
                 sidecarClient.classify(
                         new SidecarClient.ClassificationRequest(
-                                fetched.sender(), fetched.subject(), fetched.snippet()));
+                                fetched.sender(),
+                                fetched.subject(),
+                                fetched.snippet(),
+                                categoryService.names()));
 
         return llm.map(
                         response ->
@@ -140,14 +175,42 @@ public class ClassificationService {
                                         response.priority(),
                                         response.reason(),
                                         response.summary(),
-                                        ClassifiedBy.LLM))
+                                        ClassifiedBy.LLM,
+                                        // A rule beats the model on the category too: the user's
+                                        // own statement about a sender is not a hypothesis.
+                                        byRule != null ? byRule : fromModel(response)))
                 .orElseGet(
                         () ->
                                 new Verdict(
                                         Priority.NORMAL,
                                         "classifier unavailable",
                                         truncateSubject(fetched),
-                                        ClassifiedBy.FALLBACK));
+                                        ClassifiedBy.FALLBACK,
+                                        byRule != null ? byRule : unresolvedCategory()));
+    }
+
+    /** Maps the classifier's free-text category name onto a row, or gives up cleanly. */
+    private CategoryVerdict fromModel(SidecarClient.ClassificationResponse response) {
+        Optional<CategoryEntity> named = categoryService.findByName(response.category());
+        if (named.isEmpty()) {
+            return unresolvedCategory();
+        }
+        return new CategoryVerdict(
+                named.get(),
+                CategorySource.LLM,
+                response.categoryConfidence(),
+                categoryService.findByName(response.categoryAlternative()).orElse(null));
+    }
+
+    private CategoryVerdict unresolvedCategory() {
+        return new CategoryVerdict(categoryService.fallback().orElse(null), CategorySource.NONE);
+    }
+
+    private static void applyCategory(MessageEntity message, CategoryVerdict category) {
+        message.setCategory(category.category());
+        message.setCategorySource(category.source());
+        message.setCategoryConfidence(category.confidence());
+        message.setCategoryAlternative(category.alternative());
     }
 
     /** Rule and fallback paths have no LLM summary; the subject is the honest stand-in. */
@@ -157,5 +220,23 @@ public class ClassificationService {
     }
 
     private record Verdict(
-            Priority priority, String reason, String summary, ClassifiedBy classifiedBy) {}
+            Priority priority,
+            String reason,
+            String summary,
+            ClassifiedBy classifiedBy,
+            CategoryVerdict category) {}
+
+    /**
+     * @param confidence null for anything a rule settled — a rule is not a guess with a number.
+     */
+    private record CategoryVerdict(
+            CategoryEntity category,
+            CategorySource source,
+            Float confidence,
+            CategoryEntity alternative) {
+
+        CategoryVerdict(CategoryEntity category, CategorySource source) {
+            this(category, source, null, null);
+        }
+    }
 }

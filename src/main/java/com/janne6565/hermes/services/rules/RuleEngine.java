@@ -102,7 +102,7 @@ public class RuleEngine {
      * pattern is quoted and only the wildcard is translated — a stray {@code .} or {@code +} in a
      * domain must stay literal, and no user input reaches the regex engine unescaped.
      */
-    static boolean globMatches(String glob, String value) {
+    public static boolean globMatches(String glob, String value) {
         String regex =
                 java.util.Arrays.stream(glob.trim().toLowerCase(Locale.ROOT).split("\\*", -1))
                         .map(Pattern::quote)

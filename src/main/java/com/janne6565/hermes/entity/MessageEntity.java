@@ -1,5 +1,6 @@
 package com.janne6565.hermes.entity;
 
+import com.janne6565.hermes.model.core.CategorySource;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
@@ -7,7 +8,10 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
@@ -65,6 +69,36 @@ public class MessageEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "classified_by", nullable = false)
     private ClassifiedBy classifiedBy;
+
+    /**
+     * The one topic bucket this message belongs to. Never null in practice — an unresolved message
+     * is parked in the fallback category rather than left without one, so the categories screen
+     * accounts for every message it claims to.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id")
+    private CategoryEntity category;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "category_source")
+    private CategorySource categorySource;
+
+    /** The classifier's confidence, 0..1. Null for anything a rule or the user settled. */
+    @Column(name = "category_confidence")
+    private Float categoryConfidence;
+
+    /** The classifier's second choice, offered as the alternate chip in the unsure queue. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_alt_id")
+    private CategoryEntity categoryAlternative;
+
+    /** What the category was before the user overrode it; null if they never did. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_previous_id")
+    private CategoryEntity categoryPrevious;
+
+    @Column(name = "category_corrected_at")
+    private Instant categoryCorrectedAt;
 
     /** Set when a push actually went out; null for everything that stayed silent. */
     @Column(name = "notified_at")

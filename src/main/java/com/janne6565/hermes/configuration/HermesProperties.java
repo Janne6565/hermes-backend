@@ -1,6 +1,8 @@
 package com.janne6565.hermes.configuration;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -31,6 +33,7 @@ public class HermesProperties {
     @Valid @NotNull private Ntfy ntfy = new Ntfy();
     @Valid @NotNull private Digest digest = new Digest();
     @Valid @NotNull private Alerts alerts = new Alerts();
+    @Valid @NotNull private Categories categories = new Categories();
     @Valid @NotNull private Retention retention = new Retention();
     @Valid @NotNull private QuietHours quietHours = new QuietHours();
 
@@ -111,6 +114,26 @@ public class HermesProperties {
 
         /** When false the pipeline is rules-only — useful for phase 1 and for incident response. */
         private boolean enabled = true;
+    }
+
+    @Getter
+    @Setter
+    public static class Categories {
+        /**
+         * Below this the classifier's category is treated as a question rather than an answer: the
+         * message still gets the guessed category, but it also lands in the "needs a call" queue.
+         *
+         * <p>Note what this does *not* affect — priority. A message the classifier was unsure about
+         * topically is still routed on its priority verdict, so a low threshold cannot make mail go
+         * quiet while it waits for the user.
+         */
+        @DecimalMin("0.0") @DecimalMax("1.0") private float confidenceThreshold = 0.7f;
+
+        /** How many unsure messages the screen offers at once. A queue nobody finishes is noise. */
+        @Min(1) private int unsureLimit = 12;
+
+        /** Reporting window for the shares and the classification mix. */
+        @Min(1) private int windowDays = 7;
     }
 
     @Getter
