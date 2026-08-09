@@ -19,7 +19,13 @@ public record CategoryOverviewDto(
         Mix mix,
         List<UnsureDto> unsure,
         @Schema(description = "The user's most recent recategorisations, newest first")
-                List<CorrectionDto> recentCorrections) {
+                List<CorrectionDto> recentCorrections,
+        @Schema(
+                        description =
+                                "State of the categorisation backfill. Carried on the overview"
+                                    + " rather than a separate endpoint so the screen's progress"
+                                    + " and its numbers come from one read and cannot disagree.")
+                BackfillStatusDto backfill) {
 
     /**
      * How the window's categories were settled.

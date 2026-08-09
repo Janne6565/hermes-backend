@@ -4,7 +4,7 @@ import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.controller.v1.schema.CategoryApi;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
-import com.janne6565.hermes.model.core.CategoryBackfillDto;
+import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
 import com.janne6565.hermes.services.categories.CategoryBackfillService;
@@ -26,7 +26,8 @@ public class CategoryController implements CategoryApi {
     @Override
     public ResponseEntity<CategoryOverviewDto> overview(Integer days) {
         int window = days != null ? days : properties.getCategories().getWindowDays();
-        return ResponseEntity.ok(categoryService.overview(window));
+        return ResponseEntity.ok(
+                categoryService.overview(window, categoryBackfillService.status()));
     }
 
     @Override
@@ -41,8 +42,8 @@ public class CategoryController implements CategoryApi {
     }
 
     @Override
-    public ResponseEntity<CategoryBackfillDto> backfill(int limit) {
-        return ResponseEntity.ok(categoryBackfillService.run(limit));
+    public ResponseEntity<BackfillStatusDto> backfill(int limit) {
+        return ResponseEntity.ok(categoryBackfillService.start(limit));
     }
 
     @Override
