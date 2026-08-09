@@ -1,9 +1,9 @@
 package com.janne6565.hermes.services.classification;
 
-import com.janne6565.hermes.client.GmailClient;
 import com.janne6565.hermes.client.SidecarClient;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.ClassifiedBy;
+import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.MessageRepository;
 import com.janne6565.hermes.services.notification.NotificationService;
@@ -35,7 +35,7 @@ public class ClassificationService {
 
     /**
      * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
-     * paying for a Gmail fetch and a classifier call.
+     * paying for a provider fetch and a classifier call.
      */
     @Transactional(readOnly = true)
     public boolean alreadySeen(String gmailId) {
@@ -48,15 +48,15 @@ public class ClassificationService {
      * @return the stored row, or empty if we had already seen this Gmail id.
      */
     @Transactional
-    public Optional<MessageEntity> ingest(GmailClient.FetchedMessage fetched) {
-        if (messageRepository.existsByGmailId(fetched.gmailId())) {
+    public Optional<MessageEntity> ingest(FetchedMessage fetched) {
+        if (messageRepository.existsByGmailId(fetched.externalId())) {
             return Optional.empty();
         }
 
         Verdict verdict = classify(fetched);
         MessageEntity message =
                 MessageEntity.builder()
-                        .gmailId(fetched.gmailId())
+                        .gmailId(fetched.externalId())
                         .sender(fetched.sender())
                         .subject(fetched.subject())
                         .snippet(fetched.snippet())
@@ -118,7 +118,7 @@ public class ClassificationService {
         return repaired;
     }
 
-    private Verdict classify(GmailClient.FetchedMessage fetched) {
+    private Verdict classify(FetchedMessage fetched) {
         Optional<RuleEngine.Match> ruleMatch = ruleEngine.evaluate(fetched);
         if (ruleMatch.isPresent()) {
             RuleEngine.Match match = ruleMatch.get();
@@ -148,7 +148,7 @@ public class ClassificationService {
     }
 
     /** Rule and fallback paths have no LLM summary; the subject is the honest stand-in. */
-    private static String truncateSubject(GmailClient.FetchedMessage fetched) {
+    private static String truncateSubject(FetchedMessage fetched) {
         String subject = fetched.subject();
         return subject.length() <= 120 ? subject : subject.substring(0, 117) + "...";
     }

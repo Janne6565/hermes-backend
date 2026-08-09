@@ -7,9 +7,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.janne6565.hermes.client.GmailClient;
+import com.janne6565.hermes.client.MailProvider;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.entity.SyncStateEntity;
+import com.janne6565.hermes.model.core.FetchedMessage;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.services.classification.ClassificationService;
 import java.io.IOException;
 import java.util.List;
@@ -32,7 +34,7 @@ import org.mockito.quality.Strictness;
 @MockitoSettings(strictness = Strictness.LENIENT)
 class GmailSyncServiceTest {
 
-    @Mock private GmailClient gmailClient;
+    @Mock private MailProvider gmailClient;
     @Mock private SyncStateService syncStateService;
     @Mock private ClassificationService classificationService;
 
@@ -43,12 +45,12 @@ class GmailSyncServiceTest {
         // No stored cursor -> the cold-start branch.
         when(syncStateService.load())
                 .thenReturn(new SyncStateEntity(SyncStateEntity.SINGLETON_ID, null, null, null));
-        when(gmailClient.currentHistoryId()).thenReturn("999");
+        when(gmailClient.currentCursor()).thenReturn("999");
     }
 
     @Test
     void skipsKnownMessagesWithoutFetchingThem() throws IOException {
-        when(gmailClient.recentInboxMessageIds()).thenReturn(List.of("a", "b", "c"));
+        when(gmailClient.recentInboxIds()).thenReturn(List.of("a", "b", "c"));
         when(classificationService.alreadySeen("a")).thenReturn(true);
         when(classificationService.alreadySeen("b")).thenReturn(true);
         when(classificationService.alreadySeen("c")).thenReturn(false);
@@ -67,7 +69,7 @@ class GmailSyncServiceTest {
 
     @Test
     void leavesTheCursorAloneWhenInterrupted() throws IOException {
-        when(gmailClient.recentInboxMessageIds()).thenReturn(List.of("a", "b"));
+        when(gmailClient.recentInboxIds()).thenReturn(List.of("a", "b"));
         gmailSyncService.stopAcceptingWork();
 
         int ingested = gmailSyncService.sync(gmailClient);
@@ -78,8 +80,14 @@ class GmailSyncServiceTest {
         verify(gmailClient, never()).fetch(anyString());
     }
 
-    private static GmailClient.FetchedMessage fetched(String id) {
-        return new GmailClient.FetchedMessage(
-                id, "a@b.c", "subject", "snippet", java.time.Instant.EPOCH, java.util.Map.of());
+    private static FetchedMessage fetched(String id) {
+        return new FetchedMessage(
+                MailProviderType.GMAIL,
+                id,
+                "a@b.c",
+                "subject",
+                "snippet",
+                java.time.Instant.EPOCH,
+                java.util.Map.of());
     }
 }

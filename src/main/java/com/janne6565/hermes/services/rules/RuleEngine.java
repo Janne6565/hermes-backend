@@ -1,7 +1,7 @@
 package com.janne6565.hermes.services.rules;
 
-import com.janne6565.hermes.client.GmailClient;
 import com.janne6565.hermes.entity.RuleEntity;
+import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.RuleRepository;
 import java.util.List;
@@ -32,7 +32,7 @@ public class RuleEngine {
      *     to the classifier.
      */
     @Transactional
-    public Optional<Match> evaluate(GmailClient.FetchedMessage message) {
+    public Optional<Match> evaluate(FetchedMessage message) {
         List<RuleEntity> rules = ruleRepository.findByEnabledTrue();
 
         for (Priority tier : List.of(Priority.HIGH, Priority.NORMAL, Priority.NOISE)) {
@@ -49,7 +49,7 @@ public class RuleEngine {
                         rule.getId(),
                         rule.getType().wire(),
                         rule.getPattern(),
-                        message.gmailId());
+                        message.externalId());
                 return Optional.of(
                         new Match(
                                 rule.getPriority(),
@@ -60,7 +60,7 @@ public class RuleEngine {
         return Optional.empty();
     }
 
-    private static boolean matches(RuleEntity rule, GmailClient.FetchedMessage message) {
+    private static boolean matches(RuleEntity rule, FetchedMessage message) {
         return switch (rule.getType()) {
             case SENDER -> globMatches(rule.getPattern(), emailAddress(message.sender()));
             case DOMAIN -> globMatches(rule.getPattern(), domainOf(message.sender()));
@@ -72,7 +72,7 @@ public class RuleEngine {
      * A header rule is either a bare name ({@code List-Unsubscribe} — present at all) or {@code
      * Name: value} where the value is glob-matched.
      */
-    private static boolean headerMatches(String pattern, GmailClient.FetchedMessage message) {
+    private static boolean headerMatches(String pattern, FetchedMessage message) {
         int separator = pattern.indexOf(':');
         if (separator < 0) {
             return message.headers().containsKey(pattern.trim().toLowerCase(Locale.ROOT));

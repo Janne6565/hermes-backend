@@ -1,7 +1,9 @@
 package com.janne6565.hermes.services.gmail;
 
-import com.janne6565.hermes.client.GmailClient;
+import com.janne6565.hermes.client.MailProvider;
 import com.janne6565.hermes.entity.SyncStateEntity;
+import com.janne6565.hermes.model.core.CursorPage;
+import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.services.classification.ClassificationService;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
@@ -29,7 +31,7 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class GmailSyncService {
 
-    private final GmailClient gmailClient;
+    private final MailProvider mailProvider;
     private final SyncStateService syncStateService;
     private final ClassificationService classificationService;
 
@@ -52,12 +54,12 @@ public class GmailSyncService {
             fixedDelayString = "#{@hermesProperties.gmail.pollInterval.toMillis()}",
             initialDelay = 15_000)
     public void poll() {
-        if (!gmailClient.isConnected()) {
-            log.debug("No Google account connected; skipping poll");
+        if (!mailProvider.isConnected()) {
+            log.debug("No mailbox connected; skipping poll");
             return;
         }
         try {
-            int ingested = sync(gmailClient);
+            int ingested = sync(mailProvider);
             if (ingested > 0) {
                 log.info("Ingested {} new messages", ingested);
             }
@@ -70,7 +72,7 @@ public class GmailSyncService {
     /**
      * @return how many previously-unseen messages were classified and stored.
      */
-    public int sync(GmailClient client) throws IOException {
+    public int sync(MailProvider client) throws IOException {
         SyncStateEntity state = syncStateService.load();
 
         List<String> messageIds;
@@ -80,17 +82,17 @@ public class GmailSyncService {
             // Cold start: take a bounded slice of the inbox and pin the cursor to *now*, so the
             // backfill can't cascade into re-reading the whole mailbox on the next tick.
             log.info("No stored historyId — performing a bounded cold start");
-            messageIds = client.recentInboxMessageIds();
-            nextHistoryId = client.currentHistoryId();
+            messageIds = client.recentInboxIds();
+            nextHistoryId = client.currentCursor();
         } else {
-            Optional<GmailClient.HistoryPage> page = client.messagesSince(state.getHistoryId());
+            Optional<CursorPage> page = client.messagesSince(state.getHistoryId());
             if (page.isEmpty()) {
                 // Cursor expired; drop it and let the next tick cold-start.
                 syncStateService.resetCursor();
                 return 0;
             }
-            messageIds = page.get().addedMessageIds();
-            nextHistoryId = page.get().historyId();
+            messageIds = page.get().addedIds();
+            nextHistoryId = page.get().cursor();
         }
 
         int ingested = 0;
@@ -118,7 +120,7 @@ public class GmailSyncService {
             }
 
             try {
-                GmailClient.FetchedMessage fetched = client.fetch(gmailId);
+                FetchedMessage fetched = client.fetch(gmailId);
                 if (classificationService.ingest(fetched).isPresent()) {
                     ingested++;
                 }

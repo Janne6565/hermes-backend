@@ -9,6 +9,9 @@ import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.MessagePart;
 import com.google.api.services.gmail.model.MessagePartHeader;
 import com.janne6565.hermes.configuration.HermesProperties;
+import com.janne6565.hermes.model.core.CursorPage;
+import com.janne6565.hermes.model.core.FetchedMessage;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.services.auth.GmailClientProvider;
 import java.io.IOException;
 import java.math.BigInteger;
@@ -25,7 +28,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * Thin, read-only wrapper over the Gmail API.
+ * Gmail, behind {@link MailProvider}.
+ *
+ * <p>Thin and read-only.
  *
  * <p>Everything above this class works with {@link FetchedMessage} — a flat record of exactly the
  * fields triage needs. Nothing else (attachments, full bodies, thread structure) is ever read out
@@ -33,20 +38,22 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Slf4j
-public class GmailClient {
+public class GmailProvider implements MailProvider {
 
+    private static final String GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/";
     private static final String HEADER_FROM = "From";
     private static final String HEADER_SUBJECT = "Subject";
 
     private final GmailClientProvider clientProvider;
     private final HermesProperties.Gmail config;
 
-    public GmailClient(GmailClientProvider clientProvider, HermesProperties properties) {
+    public GmailProvider(GmailClientProvider clientProvider, HermesProperties properties) {
         this.clientProvider = clientProvider;
         this.config = properties.getGmail();
     }
 
     /** True once an account has been connected, in-app or through configuration. */
+    @Override
     public boolean isConnected() {
         return clientProvider.isConnected();
     }
@@ -61,8 +68,19 @@ public class GmailClient {
                 .orElseThrow(() -> new IOException("No Google account is connected"));
     }
 
+    @Override
+    public MailProviderType type() {
+        return MailProviderType.GMAIL;
+    }
+
+    @Override
+    public String deepLink(String externalId) {
+        return GMAIL_LINK + externalId;
+    }
+
     /** The mailbox's current history cursor — used to seed sync on a cold start. */
-    public String currentHistoryId() throws IOException {
+    @Override
+    public String currentCursor() throws IOException {
         return String.valueOf(
                 gmail().users().getProfile(config.getUserId()).execute().getHistoryId());
     }
@@ -73,7 +91,8 @@ public class GmailClient {
      * @return the ids added since {@code startHistoryId}, plus the new cursor — or {@link
      *     Optional#empty()} when Gmail has expired the cursor and a cold start is required.
      */
-    public Optional<HistoryPage> messagesSince(String startHistoryId) throws IOException {
+    @Override
+    public Optional<CursorPage> messagesSince(String startHistoryId) throws IOException {
         List<String> added = new ArrayList<>();
         String pageToken = null;
         String newHistoryId = startHistoryId;
@@ -114,11 +133,12 @@ public class GmailClient {
             throw exception;
         }
 
-        return Optional.of(new HistoryPage(added, newHistoryId));
+        return Optional.of(new CursorPage(added, newHistoryId));
     }
 
     /** Cold-start / recovery path: the most recent inbox messages, capped by configuration. */
-    public List<String> recentInboxMessageIds() throws IOException {
+    @Override
+    public List<String> recentInboxIds() throws IOException {
         ListMessagesResponse response =
                 gmail().users()
                         .messages()
@@ -134,6 +154,7 @@ public class GmailClient {
     }
 
     /** Fetches one message and flattens it to the fields triage actually uses. */
+    @Override
     public FetchedMessage fetch(String gmailId) throws IOException {
         Message message =
                 gmail().users()
@@ -147,6 +168,7 @@ public class GmailClient {
         String snippet = snippet(body, message.getSnippet());
 
         return new FetchedMessage(
+                MailProviderType.GMAIL,
                 message.getId(),
                 headers.getOrDefault(HEADER_FROM.toLowerCase(Locale.ROOT), "(unknown sender)"),
                 headers.getOrDefault(HEADER_SUBJECT.toLowerCase(Locale.ROOT), "(no subject)"),
@@ -209,18 +231,4 @@ public class GmailClient {
                 ? collapsed
                 : collapsed.substring(0, config.getSnippetLength());
     }
-
-    public record HistoryPage(List<String> addedMessageIds, String historyId) {}
-
-    /**
-     * @param headers all headers, lowercased keys — the rule engine needs these for {@code
-     *     List-Unsubscribe} and friends.
-     */
-    public record FetchedMessage(
-            String gmailId,
-            String sender,
-            String subject,
-            String snippet,
-            Instant receivedAt,
-            Map<String, String> headers) {}
 }

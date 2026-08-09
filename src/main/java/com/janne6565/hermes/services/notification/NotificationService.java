@@ -1,5 +1,6 @@
 package com.janne6565.hermes.services.notification;
 
+import com.janne6565.hermes.client.MailProvider;
 import com.janne6565.hermes.client.NtfyClient;
 import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.entity.AlertEventEntity;
@@ -24,9 +25,8 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class NotificationService {
 
-    private static final String GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/";
-
     private final NtfyClient ntfyClient;
+    private final MailProvider mailProvider;
     private final HermesProperties properties;
     private final Clock clock;
 
@@ -55,7 +55,7 @@ public class NotificationService {
                                                 message.getSubject(),
                                                 nullSafe(message.getReason())),
                                 "envelope",
-                                GMAIL_LINK + message.getGmailId()));
+                                mailProvider.deepLink(message.getGmailId())));
 
         if (delivered) {
             message.setNotifiedAt(Instant.now(clock));
