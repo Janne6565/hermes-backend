@@ -15,7 +15,6 @@ import com.janne6565.hermes.model.exception.DigestNotFoundException;
 import com.janne6565.hermes.repository.DigestRepository;
 import com.janne6565.hermes.repository.MessageRepository;
 import com.janne6565.hermes.services.alerts.AlertService;
-import com.janne6565.hermes.services.notification.NotificationService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -30,7 +29,6 @@ import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
@@ -56,51 +54,32 @@ public class DigestService {
     private final MessageRepository messageRepository;
     private final DigestRepository digestRepository;
     private final AlertService alertService;
-    private final NotificationService notificationService;
     private final SidecarClient sidecarClient;
     private final HermesProperties properties;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     /**
-     * Fires at the configured send time in the user's timezone. The cron reads the property, so
-     * moving the digest is a config change and a restart, not a code change.
+     * The day as it stands, for {@link DigestSender} to narrate and deliver.
+     *
+     * <p>Separate from {@link #today()} because the sender is about to *write* the narrative — it
+     * must see the day, not yesterday's paragraph about it.
      */
-    @Scheduled(
-            cron =
-                    "#{@hermesProperties.digest.sendTime.getSecond()} "
-                            + "#{@hermesProperties.digest.sendTime.getMinute()} "
-                            + "#{@hermesProperties.digest.sendTime.getHour()} * * *",
-            zone = "#{@hermesProperties.timezone.getId()}")
+    @Transactional(readOnly = true)
+    public DigestDto buildForDelivery(LocalDate date) {
+        return build(date);
+    }
+
+    /**
+     * Records what was delivered.
+     *
+     * <p>Its own short transaction, entered after the push has already happened. The alternative —
+     * one transaction spanning the whole send — would hold a connection open across an LLM call and
+     * an HTTP round trip, which is a lot of database to hold for work that never touches it.
+     */
     @Transactional
-    public void sendDailyDigest() {
-        LocalDate today = LocalDate.now(clock);
-        DigestDto digest = build(today);
-
-        if (properties.getDigest().isSkipWhenEmpty() && digest.counts().total() == 0) {
-            log.info("Nothing arrived today — skipping the digest");
-            return;
-        }
-
-        // Narrated once, here, and then persisted. The live endpoints must not trigger this: the
-        // widget refreshes on every screen open, and an LLM call per refresh would cost real money
-        // to render a paragraph nobody asked to be rewritten.
-        digest = narrate(digest);
-
-        boolean delivered =
-                notificationService.pushDigest(
-                        "Digest · %d high · %d normal"
-                                .formatted(digest.counts().high(), digest.counts().normal()),
-                        render(digest));
-
-        persist(today, digest, delivered ? Instant.now(clock) : null);
-        log.info(
-                "Digest for {}: {} high / {} normal / {} noise (delivered={})",
-                today,
-                digest.counts().high(),
-                digest.counts().normal(),
-                digest.counts().noise(),
-                delivered);
+    public void recordDelivery(LocalDate date, DigestDto digest, Instant sentAt) {
+        persist(date, digest, sentAt);
     }
 
     /**

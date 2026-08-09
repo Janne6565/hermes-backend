@@ -34,7 +34,7 @@ class DigestRenderTest {
     private final HermesProperties properties = new HermesProperties();
 
     private final DigestService service =
-            new DigestService(null, null, null, null, sidecarClient, properties, null, null);
+            new DigestService(null, null, null, sidecarClient, properties, null, null);
 
     @Test
     void narrativeLeadsAndTheListFollows() {
