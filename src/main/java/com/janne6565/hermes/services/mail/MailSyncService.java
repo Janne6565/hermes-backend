@@ -5,12 +5,14 @@ import com.janne6565.hermes.client.MailProvider;
 import com.janne6565.hermes.entity.AccountSyncStateEntity;
 import com.janne6565.hermes.model.core.CursorPage;
 import com.janne6565.hermes.model.core.FetchedMessage;
+import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.auth.MailAccountService;
 import com.janne6565.hermes.services.classification.ClassificationService;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -46,6 +48,17 @@ public class MailSyncService {
      */
     private volatile boolean shuttingDown = false;
 
+    /**
+     * Serialises the scheduled loop against a user-triggered refresh.
+     *
+     * <p>The scheduler runs one task at a time, so before the refresh button existed nothing could
+     * overlap. A manual sync runs on the request thread and can land mid-tick; both would then walk
+     * the same cursor and race to write it back. Duplicates are harmless — {@code (provider,
+     * external_id)} is unique — but the second writer could rewind the cursor to the value it read,
+     * so the newer messages the first run just ingested would be fetched again on the next tick.
+     */
+    private final ReentrantLock syncLock = new ReentrantLock();
+
     @PreDestroy
     void stopAcceptingWork() {
         shuttingDown = true;
@@ -55,23 +68,67 @@ public class MailSyncService {
             fixedDelayString = "#{@hermesProperties.gmail.pollInterval.toMillis()}",
             initialDelay = 15_000)
     public void poll() {
+        if (!syncLock.tryLock()) {
+            // A manual refresh is already walking the mailbox. Skipping is right rather than
+            // queueing: this tick's work is exactly what that run is doing.
+            log.debug("A sync is already running; skipping this scheduled tick");
+            return;
+        }
+        try {
+            syncAllAccounts();
+        } finally {
+            syncLock.unlock();
+        }
+    }
+
+    /**
+     * Runs the poll immediately, on demand.
+     *
+     * <p>Synchronous, so the caller can refetch and actually see the new mail — an async 202 would
+     * leave the UI guessing when to look again. It normally returns in well under a second: the
+     * scheduled loop has kept the cursor current, so there are a handful of messages at most. The
+     * exception is a cold start, where the bounded backfill can outlast the ingress timeout; the
+     * sync still finishes server-side, and the next poll or refresh shows the result.
+     *
+     * @return what the run did, or {@code alreadyRunning} if a scheduled tick held the lock — the
+     *     caller has nothing to do in that case but wait for the run in progress.
+     */
+    public SyncResultDto syncNow() {
+        if (!syncLock.tryLock()) {
+            log.debug("Manual sync requested while the scheduled poll is running");
+            return new SyncResultDto(true, 0, 0, 0);
+        }
+        try {
+            log.info("Manual sync requested");
+            return syncAllAccounts();
+        } finally {
+            syncLock.unlock();
+        }
+    }
+
+    /** One pass over every connected mailbox. Callers must hold {@link #syncLock}. */
+    private SyncResultDto syncAllAccounts() {
         List<MailAccount> accounts = accountService.connected();
         if (accounts.isEmpty()) {
             log.debug("No mailbox connected; skipping poll");
-            return;
+            return new SyncResultDto(false, 0, 0, 0);
         }
 
+        int ingestedTotal = 0;
+        int failed = 0;
         for (MailAccount account : accounts) {
             if (shuttingDown) {
-                return;
+                break;
             }
             try {
                 int ingested = sync(account);
+                ingestedTotal += ingested;
                 if (ingested > 0) {
                     log.info("Ingested {} new messages from {}", ingested, account.email());
                 }
             } catch (Exception exception) {
                 // Contained per account: a broken Outlook token must not stop Gmail from syncing.
+                failed++;
                 log.error(
                         "Sync failed for {}: {}",
                         account.email(),
@@ -80,6 +137,7 @@ public class MailSyncService {
                 syncStateService.recordError(account.id(), exception.getMessage());
             }
         }
+        return new SyncResultDto(false, accounts.size(), ingestedTotal, failed);
     }
 
     /**

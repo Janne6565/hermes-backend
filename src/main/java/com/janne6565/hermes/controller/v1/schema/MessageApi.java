@@ -4,6 +4,7 @@ import com.janne6565.hermes.model.action.DismissRequest;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
+import com.janne6565.hermes.model.core.SyncResultDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -72,6 +73,17 @@ public interface MessageApi {
     @Operation(summary = "High-priority items that have not been dismissed yet")
     @ApiResponse(responseCode = "200", description = "Open high-priority messages")
     ResponseEntity<List<MessageDto>> openHighPriority(@RequestParam(defaultValue = "7") int days);
+
+    @PostMapping("/sync")
+    @Operation(
+            summary = "Poll the connected mailboxes now",
+            description =
+                    "Runs the same sync as the scheduled poll, without waiting for the next tick."
+                            + " Returns once the run is finished, so the caller can reload the list"
+                            + " immediately. If a poll is already in flight the request is a no-op"
+                            + " and says so.")
+    @ApiResponse(responseCode = "200", description = "What the run ingested")
+    ResponseEntity<SyncResultDto> sync();
 
     @PostMapping("/{id}/dismiss")
     @Operation(

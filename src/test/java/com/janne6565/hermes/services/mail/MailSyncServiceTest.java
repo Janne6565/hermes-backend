@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -14,12 +15,15 @@ import com.janne6565.hermes.entity.AccountSyncStateEntity;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.MailProviderType;
+import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.auth.MailAccountService;
 import com.janne6565.hermes.services.classification.ClassificationService;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -126,6 +130,88 @@ class MailSyncServiceTest {
         // Outlook's failure is recorded against Outlook, and Gmail still completed its sync.
         verify(syncStateService).recordError(eq(OUTLOOK.id()), anyString());
         verify(syncStateService).recordSuccess(GMAIL.id(), "999");
+    }
+
+    @Test
+    void manualSyncReportsWhatItIngested() throws IOException {
+        when(accountService.connected()).thenReturn(List.of(GMAIL));
+        when(gmailProvider.recentInboxIds(GMAIL)).thenReturn(List.of("a"));
+        when(classificationService.alreadySeen(MailProviderType.GMAIL, "a")).thenReturn(false);
+        when(gmailProvider.fetch(GMAIL, "a")).thenReturn(fetched(MailProviderType.GMAIL, "a"));
+        when(classificationService.ingest(any())).thenReturn(Optional.of(new MessageEntity()));
+
+        SyncResultDto result = mailSyncService.syncNow();
+
+        assertThat(result).isEqualTo(new SyncResultDto(false, 1, 1, 0));
+    }
+
+    @Test
+    void manualSyncCountsFailuresSeparatelyFromFindingNothing() throws IOException {
+        when(accountService.connected()).thenReturn(List.of(OUTLOOK));
+        when(outlookProvider.recentInboxIds(OUTLOOK)).thenThrow(new IOException("token revoked"));
+
+        SyncResultDto result = mailSyncService.syncNow();
+
+        // Zero ingested with one failure is not "up to date" — the UI has to be able to tell them
+        // apart, so the two counters are reported separately rather than collapsed into one.
+        assertThat(result.ingested()).isZero();
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.alreadyRunning()).isFalse();
+    }
+
+    @Test
+    void aScheduledTickIsSkippedWhileAManualSyncIsRunning() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(accountService.connected()).thenReturn(List.of(GMAIL));
+        when(gmailProvider.recentInboxIds(GMAIL))
+                .thenAnswer(
+                        call -> {
+                            started.countDown();
+                            release.await(5, TimeUnit.SECONDS);
+                            return List.of();
+                        });
+
+        Thread manual = new Thread(mailSyncService::syncNow, "manual-sync");
+        manual.start();
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+        mailSyncService.poll();
+
+        release.countDown();
+        manual.join(5_000);
+
+        // The tick returned immediately instead of walking the same cursor concurrently — one
+        // visit to the mailbox, made by the manual run.
+        verify(accountService, times(1)).connected();
+        verify(gmailProvider, times(1)).recentInboxIds(GMAIL);
+    }
+
+    @Test
+    void aManualSyncDuringAScheduledTickSaysSoRatherThanReportingAnEmptyRun() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(accountService.connected()).thenReturn(List.of(GMAIL));
+        when(gmailProvider.recentInboxIds(GMAIL))
+                .thenAnswer(
+                        call -> {
+                            started.countDown();
+                            release.await(5, TimeUnit.SECONDS);
+                            return List.of();
+                        });
+
+        Thread scheduled = new Thread(mailSyncService::poll, "scheduled-poll");
+        scheduled.start();
+        assertThat(started.await(5, TimeUnit.SECONDS)).isTrue();
+
+        SyncResultDto result = mailSyncService.syncNow();
+
+        release.countDown();
+        scheduled.join(5_000);
+
+        // Reporting `false, 0, 0, 0` here would render as "checked, nothing new" when nothing was
+        // checked at all.
+        assertThat(result.alreadyRunning()).isTrue();
     }
 
     private static FetchedMessage fetched(MailProviderType provider, String id) {

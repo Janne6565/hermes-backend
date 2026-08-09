@@ -5,7 +5,9 @@ import com.janne6565.hermes.model.action.DismissRequest;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
+import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.classification.MessageQueryService;
+import com.janne6565.hermes.services.mail.MailSyncService;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class MessageController implements MessageApi {
 
     private final MessageQueryService messageQueryService;
+    private final MailSyncService mailSyncService;
 
     @Override
     public ResponseEntity<List<MessageDto>> search(
@@ -42,6 +45,11 @@ public class MessageController implements MessageApi {
     @Override
     public ResponseEntity<List<MessageDto>> openHighPriority(int days) {
         return ResponseEntity.ok(messageQueryService.openHighPriority(days));
+    }
+
+    @Override
+    public ResponseEntity<SyncResultDto> sync() {
+        return ResponseEntity.ok(mailSyncService.syncNow());
     }
 
     @Override
