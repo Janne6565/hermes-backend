@@ -41,12 +41,32 @@ public class DigestSender {
                             + "#{@hermesProperties.digest.sendTime.getHour()} * * *",
             zone = "#{@hermesProperties.timezone.getId()}")
     public void sendDailyDigest() {
-        LocalDate today = LocalDate.now(clock);
+        send(LocalDate.now(clock), false);
+    }
 
+    /**
+     * Sends today's digest right now, on request.
+     *
+     * <p>Ignores {@code skipWhenEmpty}: that setting exists so a quiet day does not buzz the phone
+     * unasked, and someone pressing the button has asked. Re-running it overwrites today's record
+     * and rewrites the narrative — deliberately, because the point of the button is to see the
+     * digest for the day as it stands now.
+     *
+     * @return the day as it now reads, including the paragraph that was just written.
+     */
+    public DigestDto sendNow() {
+        LocalDate today = LocalDate.now(clock);
+        send(today, true);
+        // Re-read rather than return the in-flight object, so the caller gets exactly what the app
+        // will show on its next refresh — same narrative, same delivery timestamp.
+        return digestService.today();
+    }
+
+    private void send(LocalDate today, boolean force) {
         // Phase 1 — read. Short, transactional, and over before anything slow starts.
         DigestDto digest = digestService.buildForDelivery(today);
 
-        if (properties.getDigest().isSkipWhenEmpty() && digest.counts().total() == 0) {
+        if (!force && properties.getDigest().isSkipWhenEmpty() && digest.counts().total() == 0) {
             log.info("Nothing arrived today — skipping the digest");
             return;
         }

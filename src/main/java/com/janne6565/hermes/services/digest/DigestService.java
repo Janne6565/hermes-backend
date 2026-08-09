@@ -92,9 +92,11 @@ public class DigestService {
     @Transactional(readOnly = true)
     public DigestDto today() {
         LocalDate today = LocalDate.now(clock);
-        return withNarrative(
-                build(today),
-                digestRepository.findByDate(today).map(this::storedNarrative).orElse(null));
+        DigestDto built = build(today);
+        return digestRepository
+                .findByDate(today)
+                .map(stored -> withDelivery(built, storedNarrative(stored), stored.getSentAt()))
+                .orElse(built);
     }
 
     private String storedNarrative(DigestEntity entity) {
@@ -302,9 +304,16 @@ public class DigestService {
     }
 
     private static DigestDto withNarrative(DigestDto digest, String narrative) {
-        if (narrative == null) {
-            return digest;
-        }
+        return narrative == null ? digest : withDelivery(digest, narrative, digest.sentAt());
+    }
+
+    /**
+     * Puts the stored delivery facts back onto a freshly built day.
+     *
+     * <p>Today's counts and lists are always rebuilt, but when it was sent and what was said about
+     * it are recorded facts — rebuilding those would be inventing them.
+     */
+    private static DigestDto withDelivery(DigestDto digest, String narrative, Instant sentAt) {
         return new DigestDto(
                 digest.date(),
                 digest.counts(),
@@ -316,7 +325,7 @@ public class DigestService {
                 digest.unclassified(),
                 digest.degraded(),
                 digest.degradedReason(),
-                digest.sentAt());
+                sentAt);
     }
 
     private static SidecarClient.DigestSummaryRequest summaryRequest(DigestDto digest) {

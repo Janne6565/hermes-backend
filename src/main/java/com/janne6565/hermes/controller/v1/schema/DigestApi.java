@@ -11,6 +11,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 
@@ -22,6 +23,17 @@ public interface DigestApi {
     @Operation(summary = "Today's digest, built live from the current state of the day")
     @ApiResponse(responseCode = "200", description = "Digest returned")
     ResponseEntity<DigestDto> today();
+
+    @PostMapping("/send")
+    @Operation(
+            summary = "Build, narrate and push today's digest now",
+            description =
+                    "Runs the evening send on demand and overwrites today's record. Takes as long"
+                            + " as the narrator does — up to the sidecar timeout. Shadow mode still"
+                            + " suppresses the push; the returned digest says whether it was"
+                            + " delivered.")
+    @ApiResponse(responseCode = "200", description = "Digest built, and pushed unless suppressed")
+    ResponseEntity<DigestDto> sendNow();
 
     @GetMapping("/stats")
     @Operation(

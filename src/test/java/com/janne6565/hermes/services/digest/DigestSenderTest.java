@@ -87,6 +87,22 @@ class DigestSenderTest {
         verify(digestService, never()).recordDelivery(any(), any(), any());
     }
 
+    @Test
+    void pressingTheButtonSendsEvenOnADayThatWouldHaveBeenSkipped() {
+        // skipWhenEmpty exists so a quiet day does not buzz the phone unasked. Someone pressing the
+        // button has asked, so the setting must not silently swallow the request.
+        properties.getDigest().setSkipWhenEmpty(true);
+        DigestDto empty = digest(0);
+        when(digestService.buildForDelivery(TODAY)).thenReturn(empty);
+        when(digestService.narrate(empty)).thenReturn(empty);
+        when(digestService.today()).thenReturn(empty);
+
+        assertThat(sender.sendNow()).isSameAs(empty);
+
+        verify(digestService).narrate(empty);
+        verify(notificationService).pushDigest(any(), any());
+    }
+
     private static DigestDto digest(int high) {
         return new DigestDto(
                 TODAY,

@@ -3,6 +3,7 @@ package com.janne6565.hermes.controller.v1.implementation;
 import com.janne6565.hermes.controller.v1.schema.DigestApi;
 import com.janne6565.hermes.model.core.DigestDto;
 import com.janne6565.hermes.model.core.DigestStatsDto;
+import com.janne6565.hermes.services.digest.DigestSender;
 import com.janne6565.hermes.services.digest.DigestService;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -14,10 +15,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class DigestController implements DigestApi {
 
     private final DigestService digestService;
+    private final DigestSender digestSender;
 
     @Override
     public ResponseEntity<DigestDto> today() {
         return ResponseEntity.ok(digestService.today());
+    }
+
+    @Override
+    public ResponseEntity<DigestDto> sendNow() {
+        return ResponseEntity.ok(digestSender.sendNow());
     }
 
     @Override
