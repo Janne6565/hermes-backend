@@ -1,6 +1,8 @@
 package com.janne6565.hermes.repository;
 
+import com.janne6565.hermes.entity.CategoryEntity;
 import com.janne6565.hermes.entity.MessageEntity;
+import com.janne6565.hermes.model.core.CategorySource;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
@@ -35,6 +37,15 @@ public interface MessageRepository
 
     /** Rows the sidecar never got to; the nightly retry job re-classifies these. */
     List<MessageEntity> findByClassifiedByOrderByReceivedAtAsc(ClassifiedBy classifiedBy);
+
+    /** The reporting window behind the categories screen. */
+    List<MessageEntity> findByReceivedAtAfter(Instant since);
+
+    List<MessageEntity> findByCategory(CategoryEntity category);
+
+    /** The "needs a call" queue: the classifier named a category but was not sure enough. */
+    List<MessageEntity> findByCategorySourceAndCategoryConfidenceLessThanOrderByReceivedAtDesc(
+            CategorySource source, float threshold);
 
     long countByClassifiedBy(ClassifiedBy classifiedBy);
 
