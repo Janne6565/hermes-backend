@@ -1,10 +1,10 @@
 package com.janne6565.hermes.services.auth;
 
 import com.janne6565.hermes.configuration.HermesProperties;
-import com.janne6565.hermes.entity.GoogleAccountEntity;
+import com.janne6565.hermes.entity.MailAccountEntity;
 import com.janne6565.hermes.model.core.GoogleAccountDto;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.exception.OAuthException;
-import com.janne6565.hermes.repository.GoogleAccountRepository;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
@@ -14,7 +14,6 @@ import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -57,8 +56,7 @@ public class GoogleOAuthService {
     private final Map<String, Instant> pendingStates = new LinkedHashMap<>();
 
     private final SecureRandom random = new SecureRandom();
-    private final GoogleAccountRepository accountRepository;
-    private final TokenCipher tokenCipher;
+    private final MailAccountService accountService;
     private final HermesProperties properties;
     private final GmailClientProvider gmailClientProvider;
     private final ObjectMapper objectMapper;
@@ -66,15 +64,13 @@ public class GoogleOAuthService {
     private final Clock clock;
 
     public GoogleOAuthService(
-            GoogleAccountRepository accountRepository,
-            TokenCipher tokenCipher,
+            MailAccountService accountService,
             HermesProperties properties,
             GmailClientProvider gmailClientProvider,
             ObjectMapper objectMapper,
             RestClient.Builder restClientBuilder,
             Clock clock) {
-        this.accountRepository = accountRepository;
-        this.tokenCipher = tokenCipher;
+        this.accountService = accountService;
         this.properties = properties;
         this.gmailClientProvider = gmailClientProvider;
         this.objectMapper = objectMapper;
@@ -133,28 +129,22 @@ public class GoogleOAuthService {
 
         String email = fetchEmail(text(tokens, "access_token"));
 
-        GoogleAccountEntity account =
-                accountRepository
-                        .findById(GoogleAccountEntity.SINGLETON_ID)
-                        .orElseGet(GoogleAccountEntity::new);
-        account.setId(GoogleAccountEntity.SINGLETON_ID);
-        account.setEmail(email);
-        account.setRefreshTokenEncrypted(tokenCipher.encrypt(refreshToken));
-        account.setScope(SCOPE);
-        account.setConnectedAt(Instant.now(clock));
-        accountRepository.save(account);
+        MailAccountEntity account =
+                accountService.connect(MailProviderType.GMAIL, email, refreshToken, SCOPE);
 
-        // Drop any cached client built from the previous token.
-        gmailClientProvider.invalidate();
+        // Drop any cached client built from the previous token for this account.
+        gmailClientProvider.invalidate(account.getId());
 
-        log.info("Connected Google account {}", email);
         return GoogleAccountDto.connected(account);
     }
 
     @Transactional(readOnly = true)
     public GoogleAccountDto status() {
-        return accountRepository
-                .findById(GoogleAccountEntity.SINGLETON_ID)
+        // Still reports a single account: the multi-account API surface lands in phase 4 together
+        // with the UI that can show more than one. Until then, the first Gmail account wins.
+        return accountService.all().stream()
+                .filter(account -> account.getProvider() == MailProviderType.GMAIL)
+                .findFirst()
                 .map(GoogleAccountDto::connected)
                 .orElseGet(
                         () ->
@@ -170,19 +160,13 @@ public class GoogleOAuthService {
      */
     @Transactional
     public void disconnect() {
-        accountRepository.deleteById(GoogleAccountEntity.SINGLETON_ID);
-        gmailClientProvider.invalidate();
-        log.info("Disconnected the Google account");
-    }
-
-    /**
-     * @return the decrypted refresh token, if an account is connected.
-     */
-    @Transactional(readOnly = true)
-    public Optional<String> storedRefreshToken() {
-        return accountRepository
-                .findById(GoogleAccountEntity.SINGLETON_ID)
-                .map(account -> tokenCipher.decrypt(account.getRefreshTokenEncrypted()));
+        accountService.all().stream()
+                .filter(account -> account.getProvider() == MailProviderType.GMAIL)
+                .forEach(
+                        account -> {
+                            accountService.disconnect(account.getId());
+                            gmailClientProvider.invalidate(account.getId());
+                        });
     }
 
     private JsonNode exchangeCode(String code) {

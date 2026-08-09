@@ -3,15 +3,16 @@ package com.janne6565.hermes.services;
 import com.janne6565.hermes.client.NtfyClient;
 import com.janne6565.hermes.client.SidecarClient;
 import com.janne6565.hermes.configuration.HermesProperties;
-import com.janne6565.hermes.entity.SyncStateEntity;
+import com.janne6565.hermes.entity.AccountSyncStateEntity;
+import com.janne6565.hermes.entity.MailAccountEntity;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.HealthDto;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.model.core.RuleSource;
 import com.janne6565.hermes.repository.MessageRepository;
 import com.janne6565.hermes.repository.RuleRepository;
-import com.janne6565.hermes.services.auth.GmailClientProvider;
-import com.janne6565.hermes.services.gmail.SyncStateService;
+import com.janne6565.hermes.services.auth.MailAccountService;
+import com.janne6565.hermes.services.mail.AccountSyncStateService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -37,8 +38,8 @@ public class HealthService {
      */
     private static final Duration SYNC_STALE_AFTER = Duration.ofMinutes(15);
 
-    private final SyncStateService syncStateService;
-    private final GmailClientProvider gmailClientProvider;
+    private final MailAccountService accountService;
+    private final AccountSyncStateService syncStateService;
     private final SidecarClient sidecarClient;
     private final NtfyClient ntfyClient;
     private final MessageRepository messageRepository;
@@ -48,27 +49,47 @@ public class HealthService {
 
     @Transactional(readOnly = true)
     public HealthDto snapshot() {
-        SyncStateEntity sync = syncStateService.current();
-        boolean connected = gmailClientProvider.isConnected();
+        List<MailAccountEntity> accounts = accountService.all();
+        boolean connected = !accounts.isEmpty();
         // Not connected is a setup state, not a fault: the onboarding screen handles it, and the
         // health dot must not scream red at someone who simply hasn't signed in yet.
-        boolean syncOk =
-                !connected || (sync.getLastError() == null && !isStale(sync.getLastSync()));
+        boolean syncOk = !connected || accounts.stream().noneMatch(this::isStalled);
         boolean sidecarOk = sidecarClient.isHealthy();
+
+        // The single cursor the rail shows is the *oldest* across accounts: the useful question is
+        // "is anything falling behind", not "did something run recently".
+        Optional<AccountSyncStateEntity> oldest =
+                accounts.stream()
+                        .map(account -> syncStateService.find(account.getId()))
+                        .flatMap(Optional::stream)
+                        .min(
+                                java.util.Comparator.comparing(
+                                        AccountSyncStateEntity::getLastSync,
+                                        java.util.Comparator.nullsFirst(
+                                                java.util.Comparator.naturalOrder())));
+        String firstError =
+                accounts.stream()
+                        .map(account -> syncStateService.find(account.getId()))
+                        .flatMap(Optional::stream)
+                        .map(AccountSyncStateEntity::getLastError)
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst()
+                        .orElse(null);
 
         long fallback = messageRepository.countByClassifiedBy(ClassifiedBy.FALLBACK);
 
-        List<HealthDto.ServiceState> services =
+        // One row per mailbox rather than a combined line: with more than one account, a merged
+        // status can only report the worst and hides which mailbox is actually stuck.
+        List<HealthDto.ServiceState> services = new ArrayList<>();
+        if (accounts.isEmpty()) {
+            services.add(
+                    new HealthDto.ServiceState(
+                            "mail sync", "warn", "NOT CONNECTED", "sign in to start"));
+        } else {
+            accounts.forEach(account -> services.add(mailboxState(account)));
+        }
+        services.addAll(
                 List.of(
-                        new HealthDto.ServiceState(
-                                "gmail sync",
-                                !connected ? "warn" : (syncOk ? "ok" : "bad"),
-                                !connected ? "NOT CONNECTED" : (syncOk ? "OK" : "STALLED"),
-                                !connected
-                                        ? "sign in with Google to start"
-                                        : (sync.getLastSync() == null
-                                                ? "never synced"
-                                                : "last " + sync.getLastSync().toString())),
                         new HealthDto.ServiceState(
                                 "claude sidecar",
                                 sidecarOk ? "ok" : "bad",
@@ -81,7 +102,7 @@ public class HealthService {
                                 ntfyClient.isHealthy() ? "OK" : "FAIL",
                                 "topic " + ntfyClient.topic()),
                         new HealthDto.ServiceState(
-                                "webhook intake", "ok", "OK", "grafana + signoz"));
+                                "webhook intake", "ok", "OK", "grafana + signoz")));
 
         // Mail not being read is the only red. A degraded classifier still stores everything,
         // and a not-yet-connected account is amber (setup pending), never red.
@@ -90,9 +111,9 @@ public class HealthService {
         return new HealthDto(
                 status,
                 services,
-                sync.getLastSync(),
-                sync.getHistoryId(),
-                sync.getLastError(),
+                oldest.map(AccountSyncStateEntity::getLastSync).orElse(null),
+                oldest.map(AccountSyncStateEntity::getCursor).orElse(null),
+                firstError,
                 fallback,
                 new HealthDto.ClassificationMix(
                         messageRepository.countByClassifiedBy(ClassifiedBy.RULE),
@@ -164,6 +185,28 @@ public class HealthService {
         }
         return new HealthDto.CredentialState(
                 "claude oauth token", days <= 14 ? "warn" : "ok", days + " d left");
+    }
+
+    /** One mailbox's row: name it by provider and address so it is obvious which is which. */
+    private HealthDto.ServiceState mailboxState(MailAccountEntity account) {
+        Optional<AccountSyncStateEntity> state = syncStateService.find(account.getId());
+        Instant lastSync = state.map(AccountSyncStateEntity::getLastSync).orElse(null);
+        boolean ok = !isStalled(account);
+
+        return new HealthDto.ServiceState(
+                "%s sync".formatted(account.getProvider().wire()),
+                ok ? "ok" : "bad",
+                ok ? "OK" : "STALLED",
+                "%s · %s"
+                        .formatted(
+                                Optional.ofNullable(account.getEmail()).orElse("(unknown address)"),
+                                lastSync == null ? "never synced" : "last " + lastSync));
+    }
+
+    private boolean isStalled(MailAccountEntity account) {
+        Optional<AccountSyncStateEntity> state = syncStateService.find(account.getId());
+        return state.map(AccountSyncStateEntity::getLastError).orElse(null) != null
+                || isStale(state.map(AccountSyncStateEntity::getLastSync).orElse(null));
     }
 
     private boolean isStale(Instant lastSync) {

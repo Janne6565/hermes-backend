@@ -4,6 +4,7 @@ import com.janne6565.hermes.client.SidecarClient;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.FetchedMessage;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.MessageRepository;
 import com.janne6565.hermes.services.notification.NotificationService;
@@ -38,8 +39,8 @@ public class ClassificationService {
      * paying for a provider fetch and a classifier call.
      */
     @Transactional(readOnly = true)
-    public boolean alreadySeen(String gmailId) {
-        return messageRepository.existsByGmailId(gmailId);
+    public boolean alreadySeen(MailProviderType provider, String externalId) {
+        return messageRepository.existsByProviderAndExternalId(provider, externalId);
     }
 
     /**
@@ -49,14 +50,16 @@ public class ClassificationService {
      */
     @Transactional
     public Optional<MessageEntity> ingest(FetchedMessage fetched) {
-        if (messageRepository.existsByGmailId(fetched.externalId())) {
+        if (messageRepository.existsByProviderAndExternalId(
+                fetched.provider(), fetched.externalId())) {
             return Optional.empty();
         }
 
         Verdict verdict = classify(fetched);
         MessageEntity message =
                 MessageEntity.builder()
-                        .gmailId(fetched.externalId())
+                        .provider(fetched.provider())
+                        .externalId(fetched.externalId())
                         .sender(fetched.sender())
                         .subject(fetched.subject())
                         .snippet(fetched.snippet())

@@ -40,7 +40,6 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class GmailProvider implements MailProvider {
 
-    private static final String GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/";
     private static final String HEADER_FROM = "From";
     private static final String HEADER_SUBJECT = "Subject";
 
@@ -52,20 +51,8 @@ public class GmailProvider implements MailProvider {
         this.config = properties.getGmail();
     }
 
-    /** True once an account has been connected, in-app or through configuration. */
-    @Override
-    public boolean isConnected() {
-        return clientProvider.isConnected();
-    }
-
-    /**
-     * The API handle is resolved per call rather than injected, because the account can be
-     * connected, swapped or disconnected while the service is running.
-     */
-    private Gmail gmail() throws IOException {
-        return clientProvider
-                .current()
-                .orElseThrow(() -> new IOException("No Google account is connected"));
+    private Gmail gmail(MailAccount account) throws IOException {
+        return clientProvider.forAccount(account);
     }
 
     @Override
@@ -73,16 +60,11 @@ public class GmailProvider implements MailProvider {
         return MailProviderType.GMAIL;
     }
 
-    @Override
-    public String deepLink(String externalId) {
-        return GMAIL_LINK + externalId;
-    }
-
     /** The mailbox's current history cursor — used to seed sync on a cold start. */
     @Override
-    public String currentCursor() throws IOException {
+    public String currentCursor(MailAccount account) throws IOException {
         return String.valueOf(
-                gmail().users().getProfile(config.getUserId()).execute().getHistoryId());
+                gmail(account).users().getProfile(config.getUserId()).execute().getHistoryId());
     }
 
     /**
@@ -92,7 +74,8 @@ public class GmailProvider implements MailProvider {
      *     Optional#empty()} when Gmail has expired the cursor and a cold start is required.
      */
     @Override
-    public Optional<CursorPage> messagesSince(String startHistoryId) throws IOException {
+    public Optional<CursorPage> messagesSince(MailAccount account, String startHistoryId)
+            throws IOException {
         List<String> added = new ArrayList<>();
         String pageToken = null;
         String newHistoryId = startHistoryId;
@@ -100,7 +83,8 @@ public class GmailProvider implements MailProvider {
         try {
             do {
                 ListHistoryResponse response =
-                        gmail().users()
+                        gmail(account)
+                                .users()
                                 .history()
                                 .list(config.getUserId())
                                 .setStartHistoryId(new BigInteger(startHistoryId))
@@ -138,9 +122,10 @@ public class GmailProvider implements MailProvider {
 
     /** Cold-start / recovery path: the most recent inbox messages, capped by configuration. */
     @Override
-    public List<String> recentInboxIds() throws IOException {
+    public List<String> recentInboxIds(MailAccount account) throws IOException {
         ListMessagesResponse response =
-                gmail().users()
+                gmail(account)
+                        .users()
                         .messages()
                         .list(config.getUserId())
                         .setQ("in:inbox")
@@ -155,9 +140,10 @@ public class GmailProvider implements MailProvider {
 
     /** Fetches one message and flattens it to the fields triage actually uses. */
     @Override
-    public FetchedMessage fetch(String gmailId) throws IOException {
+    public FetchedMessage fetch(MailAccount account, String gmailId) throws IOException {
         Message message =
-                gmail().users()
+                gmail(account)
+                        .users()
                         .messages()
                         .get(config.getUserId(), gmailId)
                         .setFormat("full")

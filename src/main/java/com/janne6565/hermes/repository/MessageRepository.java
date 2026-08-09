@@ -2,6 +2,7 @@ package com.janne6565.hermes.repository;
 
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.ClassifiedBy;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import java.time.Instant;
 import java.util.List;
@@ -19,9 +20,10 @@ import org.springframework.stereotype.Repository;
 public interface MessageRepository
         extends JpaRepository<MessageEntity, UUID>, JpaSpecificationExecutor<MessageEntity> {
 
-    Optional<MessageEntity> findByGmailId(String gmailId);
+    Optional<MessageEntity> findByProviderAndExternalId(
+            MailProviderType provider, String externalId);
 
-    boolean existsByGmailId(String gmailId);
+    boolean existsByProviderAndExternalId(MailProviderType provider, String externalId);
 
     List<MessageEntity> findByReceivedAtBetweenOrderByReceivedAtDesc(Instant from, Instant to);
 

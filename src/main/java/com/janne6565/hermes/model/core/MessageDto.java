@@ -24,8 +24,6 @@ public record MessageDto(
         @Schema(description = "Short origin label, or null — currently only \"infra\"")
                 String tag) {
 
-    private static final String GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/";
-
     /**
      * Senders that mean "this is machine-generated infrastructure mail".
      *
@@ -39,7 +37,7 @@ public record MessageDto(
     public static MessageDto from(MessageEntity entity) {
         return new MessageDto(
                 entity.getId(),
-                entity.getGmailId(),
+                entity.getExternalId(),
                 entity.getSender(),
                 displayName(entity.getSender()),
                 entity.getSubject(),
@@ -51,7 +49,7 @@ public record MessageDto(
                 entity.getClassifiedBy(),
                 entity.getNotifiedAt(),
                 entity.getDismissedAt() != null,
-                GMAIL_LINK + entity.getGmailId(),
+                entity.getProvider().deepLink(entity.getExternalId()),
                 tagOf(entity.getSender()));
     }
 

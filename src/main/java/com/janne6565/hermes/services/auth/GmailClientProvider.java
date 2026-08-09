@@ -7,91 +7,47 @@ import com.google.api.services.gmail.GmailScopes;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.UserCredentials;
+import com.janne6565.hermes.client.MailAccount;
 import com.janne6565.hermes.configuration.HermesProperties;
-import com.janne6565.hermes.entity.GoogleAccountEntity;
-import com.janne6565.hermes.repository.GoogleAccountRepository;
+import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Builds the Gmail API client from whichever refresh token is currently in force.
+ * Builds and caches a Gmail API handle per connected account.
  *
- * <p>This exists instead of a startup {@code @Bean} because the account is now connected at runtime
- * through the in-app sign-in flow: there may be no token when the pod starts, and the token can
- * change without a restart. The client is cached and invalidated on connect/disconnect rather than
- * rebuilt per poll.
- *
- * <p>A refresh token configured through {@code hermes.gmail.refresh-token} still works and takes
- * second place — it is the bootstrap/escape hatch for a cluster where the UI is not reachable.
+ * <p>Cached because constructing one sets up an HTTP transport and a credential refresher; rebuilt
+ * when the stored token changes, which is what makes a reconnect take effect without a restart.
+ * Keyed by account id and validated against the token so a re-consent cannot leave a stale
+ * credential in place.
  */
 @Component
 @RequiredArgsConstructor
-@Slf4j
 public class GmailClientProvider {
 
-    private final GoogleAccountRepository accountRepository;
-    private final TokenCipher tokenCipher;
     private final HermesProperties properties;
+    private final Map<UUID, CachedClient> cache = new ConcurrentHashMap<>();
 
-    private volatile Gmail cached;
-    private volatile String cachedFor;
-
-    /**
-     * @return the Gmail client, or empty when no account is connected.
-     */
-    @Transactional(readOnly = true)
-    public Optional<Gmail> current() {
-        Optional<String> refreshToken = activeRefreshToken();
-        if (refreshToken.isEmpty()) {
-            return Optional.empty();
+    public Gmail forAccount(MailAccount account) throws IOException {
+        CachedClient cached = cache.get(account.id());
+        if (cached != null && cached.refreshToken().equals(account.refreshToken())) {
+            return cached.client();
         }
-
-        String token = refreshToken.get();
-        Gmail existing = cached;
-        if (existing != null && token.equals(cachedFor)) {
-            return Optional.of(existing);
-        }
-
-        try {
-            Gmail client = build(token);
-            cached = client;
-            cachedFor = token;
-            return Optional.of(client);
-        } catch (Exception exception) {
-            log.error("Could not build the Gmail client: {}", exception.getMessage());
-            return Optional.empty();
-        }
+        Gmail client = build(account.refreshToken());
+        cache.put(account.id(), new CachedClient(account.refreshToken(), client));
+        return client;
     }
 
-    public boolean isConnected() {
-        return activeRefreshToken().isPresent();
+    /** Drops a cached handle — called on disconnect so a removed account leaves nothing behind. */
+    public void invalidate(UUID accountId) {
+        cache.remove(accountId);
     }
 
-    /** Drops the cached client so the next poll picks up a newly connected account. */
-    public void invalidate() {
-        cached = null;
-        cachedFor = null;
-    }
-
-    private Optional<String> activeRefreshToken() {
-        Optional<String> stored =
-                accountRepository
-                        .findById(GoogleAccountEntity.SINGLETON_ID)
-                        .map(account -> tokenCipher.decrypt(account.getRefreshTokenEncrypted()));
-        if (stored.isPresent()) {
-            return stored;
-        }
-        String configured = properties.getGmail().getRefreshToken();
-        return configured == null || configured.isBlank()
-                ? Optional.empty()
-                : Optional.of(configured);
-    }
-
-    private Gmail build(String refreshToken) throws Exception {
+    private Gmail build(String refreshToken) throws IOException {
         HermesProperties.Gmail config = properties.getGmail();
         GoogleCredentials credentials =
                 UserCredentials.newBuilder()
@@ -102,11 +58,17 @@ public class GmailClientProvider {
                         // The scope stays readonly. This service reads mail; it never writes it.
                         .createScoped(List.of(GmailScopes.GMAIL_READONLY));
 
-        return new Gmail.Builder(
-                        GoogleNetHttpTransport.newTrustedTransport(),
-                        GsonFactory.getDefaultInstance(),
-                        new HttpCredentialsAdapter(credentials))
-                .setApplicationName("hermes-mail-triage")
-                .build();
+        try {
+            return new Gmail.Builder(
+                            GoogleNetHttpTransport.newTrustedTransport(),
+                            GsonFactory.getDefaultInstance(),
+                            new HttpCredentialsAdapter(credentials))
+                    .setApplicationName("hermes-mail-triage")
+                    .build();
+        } catch (java.security.GeneralSecurityException exception) {
+            throw new IOException("Could not build the Gmail transport", exception);
+        }
     }
+
+    private record CachedClient(String refreshToken, Gmail client) {}
 }

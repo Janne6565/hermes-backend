@@ -1,6 +1,6 @@
 package com.janne6565.hermes.model.core;
 
-import com.janne6565.hermes.entity.GoogleAccountEntity;
+import com.janne6565.hermes.entity.MailAccountEntity;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 
@@ -18,7 +18,7 @@ public record GoogleAccountDto(
         @Schema(description = "False when no OAuth client is configured — sign-in cannot start yet")
                 boolean clientConfigured) {
 
-    public static GoogleAccountDto connected(GoogleAccountEntity account) {
+    public static GoogleAccountDto connected(MailAccountEntity account) {
         return new GoogleAccountDto(
                 true, account.getEmail(), account.getConnectedAt(), account.getScope(), true);
     }

@@ -1,6 +1,7 @@
 package com.janne6565.hermes.entity;
 
 import com.janne6565.hermes.model.core.ClassifiedBy;
+import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,9 +29,16 @@ public class MessageEntity {
 
     @Id @Builder.Default private UUID id = UUID.randomUUID();
 
-    /** Gmail's own message id — the idempotency key for the polling loop. */
-    @Column(name = "gmail_id", nullable = false, unique = true)
-    private String gmailId;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MailProviderType provider;
+
+    /**
+     * The provider's own message id. Unique only *within* a provider — the idempotency key for the
+     * polling loop is the (provider, external_id) pair, not this alone.
+     */
+    @Column(name = "external_id", nullable = false)
+    private String externalId;
 
     @Column(nullable = false)
     private String sender;
