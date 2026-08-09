@@ -175,8 +175,52 @@ class CategoryBackfillServiceTest {
 
         assertThat(service.status().lastOutcome()).isEqualTo("sidecar_unavailable");
         assertThat(many).allMatch(m -> m.getCategorySource() == CategorySource.NONE);
-        // One attempt, then out — not five.
-        verify(sidecarClient, times(1)).classify(any());
+        // Three strikes, then out — not all five. Bailing on the first empty response was the
+        // original behaviour and it turned one slow classification into a dead run.
+        verify(sidecarClient, times(3)).classify(any());
+    }
+
+    @Test
+    void anIsolatedFailureIsSkippedRatherThanEndingTheRun() {
+        // The real failure mode was never "the sidecar is down" — it was one turn taking longer
+        // than the client timeout. That message is lost to this run; the other four are not.
+        List<MessageEntity> many =
+                IntStream.range(0, 5).mapToObj(i -> uncategorised("a" + i + "@x.io")).toList();
+        when(messageRepository.findUncategorised()).thenReturn(many);
+        when(sidecarClient.classify(any()))
+                .thenReturn(Optional.of(says("Billing")))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(says("Billing")))
+                .thenReturn(Optional.of(says("Alerts")))
+                .thenReturn(Optional.of(says("Billing")));
+
+        service.start(200);
+        awaitIdle();
+
+        assertThat(service.status().lastOutcome()).isNotEqualTo("sidecar_unavailable");
+        verify(sidecarClient, times(5)).classify(any());
+        assertThat(many.stream().filter(m -> m.getCategorySource() == CategorySource.LLM))
+                .hasSize(4);
+    }
+
+    @Test
+    void theFailureCounterResetsOnSuccess() {
+        // Two failures, a success, then two more must not add up to a stop at three.
+        List<MessageEntity> many =
+                IntStream.range(0, 5).mapToObj(i -> uncategorised("a" + i + "@x.io")).toList();
+        when(messageRepository.findUncategorised()).thenReturn(many);
+        when(sidecarClient.classify(any()))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(says("Billing")))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.empty());
+
+        service.start(200);
+        awaitIdle();
+
+        assertThat(service.status().lastOutcome()).isNotEqualTo("sidecar_unavailable");
+        verify(sidecarClient, times(5)).classify(any());
     }
 
     @Test

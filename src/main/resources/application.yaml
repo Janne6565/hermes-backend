@@ -71,7 +71,11 @@ hermes:
   sidecar:
     # Pod-local only. The sidecar holds an account-level Claude credential.
     base-url: ${SIDECAR_URL:http://127.0.0.1:8081}
-    timeout: 30s
+    # Measured, not guessed: a classification turn takes 13-18s in the cluster, because the Agent
+    # SDK spawns a subprocess per query. The old 30s left barely one standard deviation of headroom,
+    # so the slow tail timed out — and a timed-out read surfaces as an unreadable response rather
+    # than a clean error, which is what kept killing the backfill after two messages.
+    timeout: ${SIDECAR_TIMEOUT:90s}
     enabled: ${SIDECAR_ENABLED:true}
   ntfy:
     base-url: ${NTFY_URL:https://ntfy.jannekeipert.de}

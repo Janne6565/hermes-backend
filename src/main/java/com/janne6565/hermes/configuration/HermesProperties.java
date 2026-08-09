@@ -109,8 +109,12 @@ public class HermesProperties {
          */
         @NotBlank private String baseUrl = "http://127.0.0.1:8081";
 
-        /** Classification is a single Haiku turn; 30s is generous and bounds the poll loop. */
-        @NotNull private Duration timeout = Duration.ofSeconds(30);
+        /**
+         * A classification turn measured 13-18s in the cluster — the Agent SDK spawns a subprocess
+         * per query, so "a single Haiku turn" is nothing like an API round trip. 90s covers the
+         * slow tail with room to spare and still bounds the poll loop.
+         */
+        @NotNull private Duration timeout = Duration.ofSeconds(90);
 
         /** When false the pipeline is rules-only — useful for phase 1 and for incident response. */
         private boolean enabled = true;

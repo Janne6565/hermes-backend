@@ -4,6 +4,7 @@ import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.controller.v1.schema.CategoryApi;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
+import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
@@ -33,6 +34,11 @@ public class CategoryController implements CategoryApi {
     @Override
     public ResponseEntity<CategoryDto> create(CreateCategoryRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(categoryService.create(request));
+    }
+
+    @Override
+    public ResponseEntity<CategoryDto> rename(UUID id, UpdateCategoryRequest request) {
+        return ResponseEntity.ok(categoryService.rename(id, request));
     }
 
     @Override

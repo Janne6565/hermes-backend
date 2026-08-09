@@ -1,6 +1,7 @@
 package com.janne6565.hermes.services.categories;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -11,7 +12,9 @@ import com.janne6565.hermes.entity.CategoryEntity;
 import com.janne6565.hermes.entity.CategoryRuleEntity;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
+import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.CategorySource;
+import com.janne6565.hermes.model.exception.DuplicateCategoryException;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
@@ -128,6 +131,56 @@ class CategoryServiceTest {
         assertThat(saved.getValue().getType()).isEqualTo(RuleType.SENDER);
         assertThat(saved.getValue().getPattern()).isEqualTo("billing@hetzner.com");
         assertThat(saved.getValue().getCategory()).isEqualTo(billing);
+    }
+
+    @Test
+    void renamingABuiltinIsAllowedEvenThoughDeletingItIsNot() {
+        // Deleting one shrinks what the classifier may answer; renaming only changes the label.
+        CategoryEntity builtin =
+                CategoryEntity.builder().name("People").color("#7ba05b").builtin(true).build();
+        when(categoryRepository.findById(builtin.getId())).thenReturn(Optional.of(builtin));
+        when(categoryRepository.findByNameIgnoreCase("Humans")).thenReturn(Optional.empty());
+
+        service.rename(builtin.getId(), new UpdateCategoryRequest("Humans", null));
+
+        assertThat(builtin.getName()).isEqualTo("Humans");
+        assertThat(builtin.getColor()).isEqualTo("#7ba05b");
+    }
+
+    @Test
+    void renamingLeavesOmittedFieldsAlone() {
+        when(categoryRepository.findById(billing.getId())).thenReturn(Optional.of(billing));
+
+        service.rename(billing.getId(), new UpdateCategoryRequest(null, "#6b8fa8"));
+
+        assertThat(billing.getName()).isEqualTo("Billing");
+        assertThat(billing.getColor()).isEqualTo("#6b8fa8");
+    }
+
+    @Test
+    void renamingToAnotherCategorysNameIsRejected() {
+        when(categoryRepository.findById(billing.getId())).thenReturn(Optional.of(billing));
+        when(categoryRepository.findByNameIgnoreCase("Infrastructure"))
+                .thenReturn(Optional.of(infrastructure));
+
+        assertThatThrownBy(
+                        () ->
+                                service.rename(
+                                        billing.getId(),
+                                        new UpdateCategoryRequest("Infrastructure", null)))
+                .isInstanceOf(DuplicateCategoryException.class);
+        assertThat(billing.getName()).isEqualTo("Billing");
+    }
+
+    @Test
+    void renamingACategoryToItsOwnNameIsNotADuplicate() {
+        // Recolouring without changing the name sends both fields; that must not trip the check.
+        when(categoryRepository.findById(billing.getId())).thenReturn(Optional.of(billing));
+        when(categoryRepository.findByNameIgnoreCase("Billing")).thenReturn(Optional.of(billing));
+
+        service.rename(billing.getId(), new UpdateCategoryRequest("Billing", "#111111"));
+
+        assertThat(billing.getColor()).isEqualTo("#111111");
     }
 
     @Test
