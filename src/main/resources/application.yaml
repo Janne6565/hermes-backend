@@ -16,6 +16,13 @@ spring:
     locations: classpath:db/migration
   jackson:
     default-property-inclusion: non_null
+  task:
+    scheduling:
+      shutdown:
+        # Let the running poll finish its current message and exit at the next boundary
+        # (GmailSyncService checks a shutdown flag), but never hold termination open for long.
+        await-termination: true
+        await-termination-period: 20s
 
 server:
   port: 8080

@@ -52,6 +52,8 @@ public interface AuthApi {
     @ApiResponse(responseCode = "204", description = "Disconnected")
     ResponseEntity<Void> disconnect();
 
-    /** @param url the Google consent URL the browser should be sent to. */
+    /**
+     * @param url the Google consent URL the browser should be sent to.
+     */
     record AuthorizationUrl(String url) {}
 }

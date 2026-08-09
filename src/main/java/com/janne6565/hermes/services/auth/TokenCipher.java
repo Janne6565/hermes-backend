@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
  * AES-GCM for the stored Google refresh token.
  *
  * <p>The refresh token is an account-level credential with no expiry — a database dump or a Velero
- * snapshot must not be enough to read someone's mail. The key lives in a k8s secret, so restoring
- * a backup into a different cluster yields ciphertext and nothing else.
+ * snapshot must not be enough to read someone's mail. The key lives in a k8s secret, so restoring a
+ * backup into a different cluster yields ciphertext and nothing else.
  *
  * <p>GCM rather than CBC because it authenticates: a tampered ciphertext fails to decrypt instead
  * of silently producing garbage that we would then send to Google.
@@ -47,12 +47,15 @@ public class TokenCipher {
         byte[] decoded = Base64.getDecoder().decode(configured.trim());
         if (decoded.length != 32) {
             throw new IllegalStateException(
-                    "hermes.encryption-key must decode to 32 bytes (AES-256), got " + decoded.length);
+                    "hermes.encryption-key must decode to 32 bytes (AES-256), got "
+                            + decoded.length);
         }
         return decoded;
     }
 
-    /** @return base64 of {@code nonce || ciphertext}. */
+    /**
+     * @return base64 of {@code nonce || ciphertext}.
+     */
     public String encrypt(String plaintext) {
         try {
             byte[] nonce = new byte[NONCE_BYTES];
@@ -81,8 +84,7 @@ public class TokenCipher {
 
             Cipher cipher = Cipher.getInstance(ALGORITHM);
             cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(TAG_BITS, nonce));
-            byte[] plaintext =
-                    cipher.doFinal(combined, NONCE_BYTES, combined.length - NONCE_BYTES);
+            byte[] plaintext = cipher.doFinal(combined, NONCE_BYTES, combined.length - NONCE_BYTES);
             return new String(plaintext, StandardCharsets.UTF_8);
         } catch (Exception exception) {
             throw new IllegalStateException(

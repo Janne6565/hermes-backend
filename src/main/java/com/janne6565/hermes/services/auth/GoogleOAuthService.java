@@ -29,8 +29,8 @@ import tools.jackson.databind.ObjectMapper;
  * The in-app "Sign in with Google" flow.
  *
  * <p>Replaces hand-pasting a refresh token into a sealed secret. The user clicks a button, grants
- * `gmail.readonly` once, and the refresh token is exchanged server-side and stored encrypted —
- * the token never reaches the browser.
+ * `gmail.readonly` once, and the refresh token is exchanged server-side and stored encrypted — the
+ * token never reaches the browser.
  */
 @Service
 @Slf4j
@@ -38,18 +38,16 @@ public class GoogleOAuthService {
 
     private static final String AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
-    private static final String USERINFO_ENDPOINT =
-            "https://www.googleapis.com/oauth2/v2/userinfo";
-    private static final String SCOPE =
-            "https://www.googleapis.com/auth/gmail.readonly email";
+    private static final String USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo";
+    private static final String SCOPE = "https://www.googleapis.com/auth/gmail.readonly email";
 
     /** A consent round-trip that takes longer than this is almost certainly abandoned. */
     private static final Duration STATE_TTL = Duration.ofMinutes(10);
 
     /**
-     * Pending CSRF states. In memory rather than in Postgres on purpose: they live for minutes,
-     * and losing them on a restart costs one retry of the consent screen. A restart mid-flow
-     * failing closed is the correct behaviour here.
+     * Pending CSRF states. In memory rather than in Postgres on purpose: they live for minutes, and
+     * losing them on a restart costs one retry of the consent screen. A restart mid-flow failing
+     * closed is the correct behaviour here.
      */
     private final Map<String, Instant> pendingStates = new LinkedHashMap<>();
 
@@ -79,7 +77,9 @@ public class GoogleOAuthService {
         this.clock = clock;
     }
 
-    /** @return the Google consent URL the browser should be sent to. */
+    /**
+     * @return the Google consent URL the browser should be sent to.
+     */
     public String buildAuthorizationUrl() {
         HermesProperties.Gmail config = properties.getGmail();
         if (config.getClientId().isBlank() || config.getClientSecret().isBlank()) {
@@ -90,17 +90,21 @@ public class GoogleOAuthService {
 
         String state = newState();
         return AUTH_ENDPOINT
-                + "?client_id=" + encode(config.getClientId())
-                + "&redirect_uri=" + encode(config.getRedirectUri())
+                + "?client_id="
+                + encode(config.getClientId())
+                + "&redirect_uri="
+                + encode(config.getRedirectUri())
                 + "&response_type=code"
-                + "&scope=" + encode(SCOPE)
+                + "&scope="
+                + encode(SCOPE)
                 // offline + consent is what actually yields a refresh token. Without `prompt`,
                 // Google returns only an access token on the second and later authorisations,
                 // and the connect flow appears to succeed while storing nothing usable.
                 + "&access_type=offline"
                 + "&prompt=consent"
                 + "&include_granted_scopes=true"
-                + "&state=" + encode(state);
+                + "&state="
+                + encode(state);
     }
 
     /** Exchanges the authorization code and stores the account. */
@@ -166,7 +170,9 @@ public class GoogleOAuthService {
         log.info("Disconnected the Google account");
     }
 
-    /** @return the decrypted refresh token, if an account is connected. */
+    /**
+     * @return the decrypted refresh token, if an account is connected.
+     */
     @Transactional(readOnly = true)
     public Optional<String> storedRefreshToken() {
         return accountRepository
@@ -236,7 +242,8 @@ public class GoogleOAuthService {
     private synchronized void requireValidState(String state) {
         Instant expiry = state == null ? null : pendingStates.remove(state);
         if (expiry == null || expiry.isBefore(Instant.now(clock))) {
-            throw new OAuthException("The sign-in link expired or was not started here. Try again.");
+            throw new OAuthException(
+                    "The sign-in link expired or was not started here. Try again.");
         }
     }
 

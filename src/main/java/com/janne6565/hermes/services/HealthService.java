@@ -44,7 +44,8 @@ public class HealthService {
         boolean connected = gmailClientProvider.isConnected();
         // Not connected is a setup state, not a fault: the onboarding screen handles it, and the
         // health dot must not scream red at someone who simply hasn't signed in yet.
-        boolean syncOk = !connected || (sync.getLastError() == null && !isStale(sync.getLastSync()));
+        boolean syncOk =
+                !connected || (sync.getLastError() == null && !isStale(sync.getLastSync()));
         boolean sidecarOk = sidecarClient.isHealthy();
 
         long fallback = messageRepository.countByClassifiedBy(ClassifiedBy.FALLBACK);

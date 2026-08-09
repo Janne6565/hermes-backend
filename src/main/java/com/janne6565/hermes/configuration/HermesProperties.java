@@ -74,8 +74,8 @@ public class HermesProperties {
         @NotBlank private String userId = "me";
 
         /**
-         * OAuth redirect target. Must match a redirect URI registered on the Google client
-         * exactly, including scheme and trailing path.
+         * OAuth redirect target. Must match a redirect URI registered on the Google client exactly,
+         * including scheme and trailing path.
          */
         @NotBlank private String redirectUri = "http://localhost:8080/api/v1/auth/google/callback";
 

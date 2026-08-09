@@ -46,6 +46,16 @@ public interface MessageApi {
                     String q,
             @RequestParam(defaultValue = "100") int limit);
 
+    @GetMapping("/{id}")
+    @Operation(
+            summary = "Read one message",
+            description =
+                    "The reader pane's own source, so a message stays linkable after it has dropped"
+                            + " out of today's digest.")
+    @ApiResponse(responseCode = "200", description = "The message")
+    @ApiResponse(responseCode = "404", description = "No such message")
+    ResponseEntity<MessageDto> byId(@PathVariable UUID id);
+
     @GetMapping("/high/open")
     @Operation(summary = "High-priority items that have not been dismissed yet")
     @ApiResponse(responseCode = "200", description = "Open high-priority messages")

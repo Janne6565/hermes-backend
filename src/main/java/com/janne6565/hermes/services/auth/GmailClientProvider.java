@@ -20,10 +20,10 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Builds the Gmail API client from whichever refresh token is currently in force.
  *
- * <p>This exists instead of a startup {@code @Bean} because the account is now connected at
- * runtime through the in-app sign-in flow: there may be no token when the pod starts, and the
- * token can change without a restart. The client is cached and invalidated on connect/disconnect
- * rather than rebuilt per poll.
+ * <p>This exists instead of a startup {@code @Bean} because the account is now connected at runtime
+ * through the in-app sign-in flow: there may be no token when the pod starts, and the token can
+ * change without a restart. The client is cached and invalidated on connect/disconnect rather than
+ * rebuilt per poll.
  *
  * <p>A refresh token configured through {@code hermes.gmail.refresh-token} still works and takes
  * second place — it is the bootstrap/escape hatch for a cluster where the UI is not reachable.
@@ -40,7 +40,9 @@ public class GmailClientProvider {
     private volatile Gmail cached;
     private volatile String cachedFor;
 
-    /** @return the Gmail client, or empty when no account is connected. */
+    /**
+     * @return the Gmail client, or empty when no account is connected.
+     */
     @Transactional(readOnly = true)
     public Optional<Gmail> current() {
         Optional<String> refreshToken = activeRefreshToken();
@@ -84,7 +86,9 @@ public class GmailClientProvider {
             return stored;
         }
         String configured = properties.getGmail().getRefreshToken();
-        return configured == null || configured.isBlank() ? Optional.empty() : Optional.of(configured);
+        return configured == null || configured.isBlank()
+                ? Optional.empty()
+                : Optional.of(configured);
     }
 
     private Gmail build(String refreshToken) throws Exception {

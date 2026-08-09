@@ -15,9 +15,7 @@ public record GoogleAccountDto(
         @Schema(description = "The connected mailbox, when known") String email,
         Instant connectedAt,
         String scope,
-        @Schema(
-                        description =
-                                "False when no OAuth client is configured — sign-in cannot start yet")
+        @Schema(description = "False when no OAuth client is configured — sign-in cannot start yet")
                 boolean clientConfigured) {
 
     public static GoogleAccountDto connected(GoogleAccountEntity account) {

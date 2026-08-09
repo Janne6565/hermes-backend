@@ -25,6 +25,11 @@ public class MessageController implements MessageApi {
     }
 
     @Override
+    public ResponseEntity<MessageDto> byId(UUID id) {
+        return ResponseEntity.ok(messageQueryService.byId(id));
+    }
+
+    @Override
     public ResponseEntity<List<MessageDto>> openHighPriority(int days) {
         return ResponseEntity.ok(messageQueryService.openHighPriority(days));
     }

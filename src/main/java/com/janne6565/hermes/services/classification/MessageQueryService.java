@@ -75,6 +75,14 @@ public class MessageQueryService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public MessageDto byId(UUID messageId) {
+        return messageRepository
+                .findById(messageId)
+                .map(MessageDto::from)
+                .orElseThrow(() -> new MessageNotFoundException(messageId));
+    }
+
     /** High-priority items that are still open — the list the inbox screen leads with. */
     @Transactional(readOnly = true)
     public List<MessageDto> openHighPriority(int days) {

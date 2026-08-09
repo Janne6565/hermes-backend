@@ -34,6 +34,15 @@ public class ClassificationService {
     private final NotificationService notificationService;
 
     /**
+     * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
+     * paying for a Gmail fetch and a classifier call.
+     */
+    @Transactional(readOnly = true)
+    public boolean alreadySeen(String gmailId) {
+        return messageRepository.existsByGmailId(gmailId);
+    }
+
+    /**
      * Classifies and persists a freshly fetched message, pushing if it earns an interrupt.
      *
      * @return the stored row, or empty if we had already seen this Gmail id.

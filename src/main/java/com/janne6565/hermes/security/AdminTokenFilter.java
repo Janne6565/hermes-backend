@@ -20,8 +20,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * Single-user access control.
  *
  * <p>Hermes reads someone's mail and, since the in-app connect flow exists, can be pointed at a
- * mailbox. Neither may be reachable by whoever finds the hostname, so everything under
- * {@code /api} requires the admin token.
+ * mailbox. Neither may be reachable by whoever finds the hostname, so everything under {@code /api}
+ * requires the admin token.
  *
  * <p>Two endpoints are deliberately exempt, each because it carries its own stronger check:
  *
@@ -78,7 +78,8 @@ public class AdminTokenFilter extends OncePerRequestFilter {
         if (!isAuthorised(request)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/problem+json");
-            response.getWriter().write("{\"status\":401,\"detail\":\"Missing or invalid admin token\"}");
+            response.getWriter()
+                    .write("{\"status\":401,\"detail\":\"Missing or invalid admin token\"}");
             return;
         }
         chain.doFilter(request, response);

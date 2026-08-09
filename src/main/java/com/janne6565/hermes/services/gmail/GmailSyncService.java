@@ -3,6 +3,7 @@ package com.janne6565.hermes.services.gmail;
 import com.janne6565.hermes.client.GmailClient;
 import com.janne6565.hermes.entity.SyncStateEntity;
 import com.janne6565.hermes.services.classification.ClassificationService;
+import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -31,6 +32,21 @@ public class GmailSyncService {
     private final GmailClient gmailClient;
     private final SyncStateService syncStateService;
     private final ClassificationService classificationService;
+
+    /**
+     * Set on shutdown so an in-flight batch stops at the next message boundary.
+     *
+     * <p>Without this the pod sat in Terminating for minutes on a cold start — the scheduler waits
+     * for the running task, and a 100-message batch each making a classifier round trip takes a
+     * while — and was then SIGKILLed before the cursor was written, so the next pod started the
+     * whole cold start again.
+     */
+    private volatile boolean shuttingDown = false;
+
+    @PreDestroy
+    void stopAcceptingWork() {
+        shuttingDown = true;
+    }
 
     @Scheduled(
             fixedDelayString = "#{@hermesProperties.gmail.pollInterval.toMillis()}",
@@ -78,7 +94,29 @@ public class GmailSyncService {
         }
 
         int ingested = 0;
+        int skipped = 0;
         for (String gmailId : messageIds) {
+            // Cooperative cancellation. The cursor is only advanced once the whole batch is
+            // processed, so an interrupted batch must leave it untouched and be retried — never
+            // half-recorded, which would skip whatever was still pending.
+            if (shuttingDown) {
+                log.info(
+                        "Shutdown requested — stopping after {} ingested, {} already known;"
+                                + " the cursor is left unchanged and the batch will be retried",
+                        ingested,
+                        skipped);
+                return ingested;
+            }
+
+            // Check before fetching, not inside ingest(). A message we have already seen costs one
+            // indexed lookup here instead of a full Gmail round trip plus a classifier call — which
+            // is what makes an interrupted cold start cheap to repeat rather than a rerun of the
+            // entire batch.
+            if (classificationService.alreadySeen(gmailId)) {
+                skipped++;
+                continue;
+            }
+
             try {
                 GmailClient.FetchedMessage fetched = client.fetch(gmailId);
                 if (classificationService.ingest(fetched).isPresent()) {
@@ -91,6 +129,9 @@ public class GmailSyncService {
             }
         }
 
+        if (skipped > 0) {
+            log.info("Skipped {} already-known messages", skipped);
+        }
         syncStateService.recordSuccess(nextHistoryId);
         return ingested;
     }
