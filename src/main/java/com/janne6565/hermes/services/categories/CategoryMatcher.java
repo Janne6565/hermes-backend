@@ -68,6 +68,44 @@ public class CategoryMatcher {
         return Optional.empty();
     }
 
+    /**
+     * The same resolution against a message we already stored, which means sender rules only.
+     *
+     * <p>Headers are dropped after classification — data minimisation — so a header rule has
+     * nothing left to match on. It is skipped rather than treated as a miss, because those two
+     * are different: "this rule does not apply" and "we can no longer tell" would otherwise both
+     * silently push the message on to the classifier, and only one of them should.
+     *
+     * @return the matched rule, or empty when no address- or domain-based rule speaks to it.
+     */
+    @Transactional
+    public Optional<CategoryRuleEntity> matchStored(String sender) {
+        List<CategoryRuleEntity> rules = categoryRuleRepository.findAll();
+
+        for (RuleType type : List.of(RuleType.SENDER, RuleType.DOMAIN)) {
+            Optional<CategoryRuleEntity> hit =
+                    rules.stream()
+                            .filter(rule -> rule.getType() == type)
+                            .sorted(
+                                    Comparator.comparing(CategoryRuleEntity::getCreatedAt)
+                                            .reversed())
+                            .filter(
+                                    rule ->
+                                            RuleEngine.globMatches(
+                                                    rule.getPattern(),
+                                                    type == RuleType.DOMAIN
+                                                            ? RuleEngine.domainOf(sender)
+                                                            : RuleEngine.emailAddress(sender)))
+                            .findFirst();
+            if (hit.isPresent()) {
+                CategoryRuleEntity rule = hit.get();
+                rule.setHits(rule.getHits() + 1);
+                return Optional.of(rule);
+            }
+        }
+        return Optional.empty();
+    }
+
     private static boolean matches(CategoryRuleEntity rule, FetchedMessage message) {
         return switch (rule.getType()) {
             case SENDER -> RuleEngine.globMatches(

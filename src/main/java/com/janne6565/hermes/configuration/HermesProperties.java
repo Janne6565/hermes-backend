@@ -134,6 +134,16 @@ public class HermesProperties {
 
         /** Reporting window for the shares and the classification mix. */
         @Min(1) private int windowDays = 7;
+
+        /**
+         * Ask the classifier for a category even when a hard rule already settled the priority.
+         *
+         * <p>On, because roughly a third of this mailbox never reaches the classifier and would
+         * otherwise sit in the fallback bucket for good. It is the one knob that raises the LLM
+         * call rate — turn it off to restore the rules-are-free cost profile and accept that
+         * rule-settled mail is categorised only by category rules.
+         */
+        private boolean classifyRuleHits = true;
     }
 
     @Getter

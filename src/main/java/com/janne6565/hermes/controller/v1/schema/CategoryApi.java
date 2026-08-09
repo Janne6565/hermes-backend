@@ -2,6 +2,7 @@ package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
+import com.janne6565.hermes.model.core.CategoryBackfillDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -52,6 +53,19 @@ public interface CategoryApi {
     @ApiResponse(responseCode = "404", description = "No such category")
     @ApiResponse(responseCode = "409", description = "Built-in categories cannot be deleted")
     ResponseEntity<Void> delete(@PathVariable UUID id);
+
+    @PostMapping("/backfill")
+    @Operation(
+            summary = "Categorise mail that predates the feature",
+            description =
+                    "Category rules first, which are free, then the classifier for whatever they"
+                        + " miss — one Haiku turn each, bounded by `limit`. Priorities are never"
+                        + " re-decided. Resumable: run it again to continue where it stopped.")
+    @ApiResponse(responseCode = "200", description = "What the run did")
+    ResponseEntity<CategoryBackfillDto> backfill(
+            @Parameter(description = "Cap on classifier calls in this run")
+                    @RequestParam(defaultValue = "200")
+                    int limit);
 
     @PostMapping("/assign")
     @Operation(
