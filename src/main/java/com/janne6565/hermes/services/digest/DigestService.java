@@ -1,5 +1,6 @@
 package com.janne6565.hermes.services.digest;
 
+import com.janne6565.hermes.client.SidecarClient;
 import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.entity.AlertEventEntity;
 import com.janne6565.hermes.entity.DigestEntity;
@@ -40,10 +41,23 @@ import tools.jackson.databind.ObjectMapper;
 @Slf4j
 public class DigestService {
 
+    /**
+     * Ceiling on the pushed body. ntfy carries the digest as one message, and a body that outgrows
+     * the server's limit is rejected or turned into an attachment — a text file is exactly the
+     * thing this digest is not supposed to be.
+     */
+    private static final int MAX_PUSH_BODY_LENGTH = 3500;
+
+    /**
+     * Lines per section in the push. Beyond this the list stops being read and starts scrolling.
+     */
+    private static final int MAX_LISTED_PER_SECTION = 8;
+
     private final MessageRepository messageRepository;
     private final DigestRepository digestRepository;
     private final AlertService alertService;
     private final NotificationService notificationService;
+    private final SidecarClient sidecarClient;
     private final HermesProperties properties;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -68,6 +82,11 @@ public class DigestService {
             return;
         }
 
+        // Narrated once, here, and then persisted. The live endpoints must not trigger this: the
+        // widget refreshes on every screen open, and an LLM call per refresh would cost real money
+        // to render a paragraph nobody asked to be rewritten.
+        digest = narrate(digest);
+
         boolean delivered =
                 notificationService.pushDigest(
                         "Digest · %d high · %d normal"
@@ -84,10 +103,28 @@ public class DigestService {
                 delivered);
     }
 
-    /** Builds today's digest live, so the widget always reflects the current state of the day. */
+    /**
+     * Builds today's digest live, so the widget always reflects the current state of the day.
+     *
+     * <p>The narrative is the one part that is *not* rebuilt: it is written once when the digest is
+     * sent and then read back, so the app shows the same evening text that went to the phone rather
+     * than a slightly different paragraph on every refresh.
+     */
     @Transactional(readOnly = true)
     public DigestDto today() {
-        return build(LocalDate.now(clock));
+        LocalDate today = LocalDate.now(clock);
+        return withNarrative(
+                build(today),
+                digestRepository.findByDate(today).map(this::storedNarrative).orElse(null));
+    }
+
+    private String storedNarrative(DigestEntity entity) {
+        try {
+            return objectMapper.readValue(entity.getContent(), DigestDto.class).narrative();
+        } catch (Exception exception) {
+            log.warn("Could not read the stored narrative for {}", entity.getDate());
+            return null;
+        }
     }
 
     /**
@@ -108,6 +145,7 @@ public class DigestService {
             return new DigestDto(
                     content.date(),
                     content.counts(),
+                    content.narrative(),
                     content.high(),
                     content.normal(),
                     content.noise(),
@@ -201,6 +239,7 @@ public class DigestService {
         return new DigestDto(
                 date,
                 new DigestDto.Counts(high.size(), normal.size(), noise.size()),
+                null,
                 high,
                 normal,
                 summariseNoise(noise),
@@ -260,38 +299,93 @@ public class DigestService {
         return "newsletters";
     }
 
-    /** Plain-text rendering for the ntfy body. Deliberately terse — the app has the full view. */
+    /**
+     * Asks the sidecar to write the day up in prose.
+     *
+     * <p>Best effort by construction: an unavailable narrator returns the digest unchanged, and
+     * {@link #render} falls back to the bare list. The digest going out late-but-plain is always
+     * better than the digest not going out.
+     */
+    DigestDto narrate(DigestDto digest) {
+        if (!properties.getDigest().isNarrative()) {
+            return digest;
+        }
+        try {
+            return withNarrative(
+                    digest, sidecarClient.summarise(summaryRequest(digest)).orElse(null));
+        } catch (Exception exception) {
+            log.warn(
+                    "Could not narrate the digest for {}: {}",
+                    digest.date(),
+                    exception.getMessage());
+            return digest;
+        }
+    }
+
+    private static DigestDto withNarrative(DigestDto digest, String narrative) {
+        if (narrative == null) {
+            return digest;
+        }
+        return new DigestDto(
+                digest.date(),
+                digest.counts(),
+                narrative,
+                digest.high(),
+                digest.normal(),
+                digest.noise(),
+                digest.alerts(),
+                digest.unclassified(),
+                digest.degraded(),
+                digest.degradedReason(),
+                digest.sentAt());
+    }
+
+    private static SidecarClient.DigestSummaryRequest summaryRequest(DigestDto digest) {
+        return new SidecarClient.DigestSummaryRequest(
+                digest.date(),
+                digest.counts(),
+                digest.high().stream().map(DigestService::item).toList(),
+                digest.normal().stream().map(DigestService::item).toList(),
+                digest.noise().categories(),
+                digest.alerts().stream()
+                        .filter(alert -> alert.resolvedAt() == null)
+                        .map(AlertEventDto::title)
+                        .toList(),
+                digest.unclassified());
+    }
+
+    private static SidecarClient.DigestSummaryRequest.Item item(MessageDto message) {
+        return new SidecarClient.DigestSummaryRequest.Item(
+                message.senderName(), message.subject(), message.summary());
+    }
+
+    /**
+     * Plain-text rendering for the ntfy body.
+     *
+     * <p>The narrative leads and the list is the appendix under it. That order is the point: a
+     * notification is read on a lock screen in one glance, and a wall of "sender — subject" lines
+     * is something the user has to work through rather than read. The list stays because the prose
+     * is model output — it is the auditable version of the same day.
+     */
     String render(DigestDto digest) {
         List<String> lines = new ArrayList<>();
         if (digest.degraded()) {
             lines.add("! " + digest.degradedReason());
             lines.add("");
         }
-        if (!digest.high().isEmpty()) {
-            lines.add("HIGH");
-            digest.high()
-                    .forEach(
-                            message ->
-                                    lines.add(
-                                            "  %s — %s"
-                                                    .formatted(
-                                                            message.senderName(),
-                                                            message.subject())));
+        if (digest.narrative() != null && !digest.narrative().isBlank()) {
+            lines.add(digest.narrative());
             lines.add("");
         }
-        if (!digest.normal().isEmpty()) {
-            lines.add("NORMAL");
-            digest.normal()
-                    .forEach(
-                            message ->
-                                    lines.add(
-                                            "  %s — %s"
-                                                    .formatted(
-                                                            message.senderName(),
-                                                            Optional.ofNullable(message.summary())
-                                                                    .orElse(message.subject()))));
-            lines.add("");
-        }
+        appendSection(lines, "HIGH", digest.high(), MessageDto::subject);
+        appendSection(
+                lines,
+                "NORMAL",
+                digest.normal(),
+                message ->
+                        Optional.ofNullable(message.summary())
+                                .filter(summary -> !summary.isBlank())
+                                .orElse(message.subject()));
         if (properties.getDigest().isIncludeNoise() && digest.noise().count() > 0) {
             lines.add("NOISE — %d".formatted(digest.noise().count()));
         }
@@ -301,7 +395,42 @@ public class DigestService {
             lines.add("");
             lines.add("ALERTS — %d unresolved".formatted(firing.size()));
         }
-        return String.join("\n", lines);
+        return clamp(String.join("\n", lines).strip());
+    }
+
+    private static void appendSection(
+            List<String> lines,
+            String heading,
+            List<MessageDto> messages,
+            java.util.function.Function<MessageDto, String> detail) {
+        if (messages.isEmpty()) {
+            return;
+        }
+        lines.add(heading);
+        messages.stream()
+                .limit(MAX_LISTED_PER_SECTION)
+                .forEach(
+                        message ->
+                                lines.add(
+                                        "  %s — %s"
+                                                .formatted(
+                                                        message.senderName(),
+                                                        detail.apply(message))));
+        int hidden = messages.size() - MAX_LISTED_PER_SECTION;
+        if (hidden > 0) {
+            lines.add("  … und %d weitere".formatted(hidden));
+        }
+        lines.add("");
+    }
+
+    /** Cuts at a line boundary, so a truncated push never ends halfway through a sender. */
+    private static String clamp(String body) {
+        if (body.length() <= MAX_PUSH_BODY_LENGTH) {
+            return body;
+        }
+        String head = body.substring(0, MAX_PUSH_BODY_LENGTH);
+        int lastBreak = head.lastIndexOf('\n');
+        return (lastBreak > 0 ? head.substring(0, lastBreak) : head) + "\n…";
     }
 
     private void persist(LocalDate date, DigestDto digest, Instant sentAt) {

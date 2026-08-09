@@ -1,9 +1,11 @@
 package com.janne6565.hermes.client;
 
 import com.janne6565.hermes.configuration.HermesProperties;
+import com.janne6565.hermes.model.core.DigestDto;
 import com.janne6565.hermes.model.core.Priority;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -76,6 +78,40 @@ public class SidecarClient {
             // anything else (timeout, connection refused) lands here too and is treated the same.
             markUnhealthy(errorTypeOf(exception));
             log.warn("Sidecar classification failed: {}", exception.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Asks the sidecar to narrate a day.
+     *
+     * <p>Deliberately does not move {@link #isHealthy()} or {@link #lastError()} in either
+     * direction. Those two mean "mail is being classified" — the one thing the health screen exists
+     * to answer — and a missing paragraph in the evening digest is not that. A failure here is
+     * simply an empty narrative, and the digest goes out as the plain list it was before.
+     *
+     * @return the day's prose summary, or empty when the sidecar is disabled, unreachable, or
+     *     produced nothing usable. Never a fabricated sentence.
+     */
+    public Optional<String> summarise(DigestSummaryRequest request) {
+        if (!enabled) {
+            return Optional.empty();
+        }
+        try {
+            SummaryResponse response =
+                    restClient
+                            .post()
+                            .uri("/summary")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(request)
+                            .retrieve()
+                            .body(SummaryResponse.class);
+
+            return Optional.ofNullable(response)
+                    .map(SummaryResponse::narrative)
+                    .filter(narrative -> !narrative.isBlank());
+        } catch (Exception exception) {
+            log.warn("Sidecar digest summary failed: {}", exception.getMessage());
             return Optional.empty();
         }
     }
@@ -171,4 +207,28 @@ public class SidecarClient {
             String category,
             Float categoryConfidence,
             String categoryAlternative) {}
+
+    /**
+     * One day, as the narrator sees it.
+     *
+     * <p>Carries the same three fields per message the classifier was allowed — sender, subject and
+     * the one-line summary it already produced — and never the body. The narrator is describing
+     * work that has already been done, so it needs no more raw mail than the classifier did.
+     *
+     * @param alerts titles of the day's unresolved alerts, so the summary can admit that something
+     *     is still on fire rather than closing on a tidy note.
+     */
+    public record DigestSummaryRequest(
+            LocalDate date,
+            DigestDto.Counts counts,
+            List<Item> high,
+            List<Item> normal,
+            List<DigestDto.NoiseSummary.Category> noiseCategories,
+            List<String> alerts,
+            int unclassified) {
+
+        public record Item(String sender, String subject, String summary) {}
+    }
+
+    public record SummaryResponse(String narrative) {}
 }

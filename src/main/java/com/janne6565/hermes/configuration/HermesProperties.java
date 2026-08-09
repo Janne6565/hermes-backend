@@ -174,6 +174,15 @@ public class HermesProperties {
          * Skip the push entirely on a day where nothing arrived, rather than sending three zeroes.
          */
         private boolean skipWhenEmpty = false;
+
+        /**
+         * Let the sidecar write the day up in prose ahead of the list.
+         *
+         * <p>One extra LLM call per day, at send time only. Turning it off falls back to the bare
+         * list — which is also what happens on its own whenever the sidecar is unavailable, so this
+         * knob changes the intent, never the failure mode.
+         */
+        private boolean narrative = true;
     }
 
     @Getter

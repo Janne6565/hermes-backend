@@ -88,6 +88,8 @@ hermes:
     send-time: ${DIGEST_SEND_TIME:18:00}
     include-noise: true
     skip-when-empty: false
+    # One extra Haiku turn per day, at send time. Off falls back to the bare list.
+    narrative: ${DIGEST_NARRATIVE:true}
   alerts:
     webhook-secret: ${ALERT_WEBHOOK_SECRET:}
     push-delay: 0s

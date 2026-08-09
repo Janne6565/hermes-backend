@@ -16,6 +16,13 @@ import java.util.List;
 public record DigestDto(
         LocalDate date,
         Counts counts,
+        @Schema(
+                        description =
+                                "A few sentences of German prose describing the day, written when"
+                                        + " the digest is sent. Null when the narrator was unavailable"
+                                        + " or the digest has not been sent yet — the list below is"
+                                        + " always the source of truth.")
+                String narrative,
         List<MessageDto> high,
         List<MessageDto> normal,
         NoiseSummary noise,
