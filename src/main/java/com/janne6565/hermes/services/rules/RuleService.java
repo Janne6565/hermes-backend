@@ -130,9 +130,9 @@ public class RuleService {
                         .findById(request.messageId())
                         .orElseThrow(() -> new MessageNotFoundException(request.messageId()));
 
-        RuleType type = request.applyToDomain() ? RuleType.DOMAIN : RuleType.SENDER;
+        RuleType type = request.shouldApplyToDomain() ? RuleType.DOMAIN : RuleType.SENDER;
         String pattern =
-                request.applyToDomain()
+                request.shouldApplyToDomain()
                         ? "*." + RuleEngine.domainOf(message.getSender())
                         : RuleEngine.emailAddress(message.getSender());
 

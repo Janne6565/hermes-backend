@@ -339,9 +339,9 @@ public class CategoryService {
         message.setCategoryCorrectedAt(Instant.now());
 
         if (request.shouldLearn()) {
-            RuleType type = request.applyToDomain() ? RuleType.DOMAIN : RuleType.SENDER;
+            RuleType type = request.shouldApplyToDomain() ? RuleType.DOMAIN : RuleType.SENDER;
             String pattern =
-                    request.applyToDomain()
+                    request.shouldApplyToDomain()
                             ? "*." + RuleEngine.domainOf(message.getSender())
                             : RuleEngine.emailAddress(message.getSender());
             upsertRule(type, pattern, category);

@@ -15,5 +15,13 @@ public record FeedbackRequest(
         @Schema(description = "What the priority should have been") @NotNull Priority shouldHaveBeen,
         @Schema(
                         description =
-                                "Create a domain rule instead of a sender rule — use for whole newsletter domains")
-                boolean applyToDomain) {}
+                                "Create a domain rule instead of a sender rule — use for whole"
+                                        + " newsletter domains",
+                        defaultValue = "false")
+                Boolean applyToDomain) {
+
+    /** Same reason as {@link AssignCategoryRequest#shouldApplyToDomain()} — absent must mean no. */
+    public boolean shouldApplyToDomain() {
+        return Boolean.TRUE.equals(applyToDomain);
+    }
+}
