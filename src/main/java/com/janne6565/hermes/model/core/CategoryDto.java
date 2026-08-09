@@ -20,13 +20,17 @@ public record CategoryDto(
                                 "The priority this category's mail most often ended up with —"
                                     + " observed, not configured. Categories never set priority.")
                 Priority typicalPriority,
-        @Schema(description = "Patterns of the rules that assign this category")
-                List<String> matchedBy,
+        @Schema(
+                        description =
+                                "The rules that file mail into this category, oldest first. The"
+                                    + " table renders their patterns; the detail view lets you"
+                                    + " remove one.")
+                List<CategoryRuleDto> rules,
         @Schema(description = "Messages the user moved into this category during the window")
                 int corrected) {
 
     /** The empty-window shape, so a category with no traffic still renders as a row. */
-    public static CategoryDto empty(CategoryEntity entity, List<String> matchedBy) {
+    public static CategoryDto empty(CategoryEntity entity, List<CategoryRuleDto> rules) {
         return new CategoryDto(
                 entity.getId(),
                 entity.getName(),
@@ -36,7 +40,7 @@ public record CategoryDto(
                 0,
                 0d,
                 null,
-                matchedBy,
+                rules,
                 0);
     }
 }

@@ -14,6 +14,7 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.CategorySource;
+import com.janne6565.hermes.model.exception.CategoryRuleNotFoundException;
 import com.janne6565.hermes.model.exception.DuplicateCategoryException;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MailProviderType;
@@ -181,6 +182,32 @@ class CategoryServiceTest {
         service.rename(billing.getId(), new UpdateCategoryRequest("Billing", "#111111"));
 
         assertThat(billing.getColor()).isEqualTo("#111111");
+    }
+
+    @Test
+    void deletingARuleLeavesTheMailItAlreadyFiledAlone() {
+        // The rule explains how a message got here, not where it belongs.
+        CategoryRuleEntity rule =
+                CategoryRuleEntity.builder()
+                        .category(billing)
+                        .type(RuleType.SENDER)
+                        .pattern("billing@hetzner.com")
+                        .build();
+        when(categoryRuleRepository.findById(rule.getId())).thenReturn(Optional.of(rule));
+
+        service.deleteRule(rule.getId());
+
+        verify(categoryRuleRepository).delete(rule);
+        verify(messageRepository, never()).findByCategory(any());
+    }
+
+    @Test
+    void deletingAnAbsentRuleIsA404() {
+        UUID missing = UUID.randomUUID();
+        when(categoryRuleRepository.findById(missing)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.deleteRule(missing))
+                .isInstanceOf(CategoryRuleNotFoundException.class);
     }
 
     @Test

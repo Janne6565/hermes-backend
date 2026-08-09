@@ -53,6 +53,12 @@ public class CategoryController implements CategoryApi {
     }
 
     @Override
+    public ResponseEntity<Void> deleteRule(UUID ruleId) {
+        categoryService.deleteRule(ruleId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Override
     public ResponseEntity<CategoryDto> assign(AssignCategoryRequest request) {
         return ResponseEntity.ok(categoryService.assign(request));
     }

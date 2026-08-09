@@ -9,6 +9,7 @@ import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
 import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.CategoryDto;
+import com.janne6565.hermes.model.core.CategoryRuleDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
 import com.janne6565.hermes.model.core.CategorySource;
 import com.janne6565.hermes.model.core.Priority;
@@ -16,6 +17,7 @@ import com.janne6565.hermes.model.core.RuleSource;
 import com.janne6565.hermes.model.core.RuleType;
 import com.janne6565.hermes.model.exception.BuiltinCategoryException;
 import com.janne6565.hermes.model.exception.CategoryNotFoundException;
+import com.janne6565.hermes.model.exception.CategoryRuleNotFoundException;
 import com.janne6565.hermes.model.exception.DuplicateCategoryException;
 import com.janne6565.hermes.model.exception.MessageNotFoundException;
 import com.janne6565.hermes.repository.CategoryRepository;
@@ -41,8 +43,12 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class CategoryService {
 
-    /** How many rule patterns the "matched by" column lists before it gives up and counts. */
-    private static final int MATCHED_BY_LIMIT = 4;
+    /**
+     * Upper bound on the rules returned per category. The table truncates visually anyway and the
+     * detail view is a list, not a spreadsheet; this only stops a runaway category from bloating
+     * every poll of the overview.
+     */
+    private static final int RULES_LIMIT = 50;
 
     private final CategoryRepository categoryRepository;
     private final CategoryRuleRepository categoryRuleRepository;
@@ -81,7 +87,7 @@ public class CategoryService {
                         .filter(message -> message.getCategory() != null)
                         .collect(Collectors.groupingBy(message -> message.getCategory().getId()));
 
-        Map<UUID, List<String>> patterns = matchedByPatterns();
+        Map<UUID, List<CategoryRuleDto>> patterns = rulesByCategory();
 
         List<CategoryDto> rows =
                 categories.stream()
@@ -103,9 +109,9 @@ public class CategoryService {
             CategoryEntity category,
             List<MessageEntity> messages,
             int windowTotal,
-            List<String> matchedBy) {
+            List<CategoryRuleDto> rules) {
         if (messages.isEmpty()) {
-            return CategoryDto.empty(category, matchedBy);
+            return CategoryDto.empty(category, rules);
         }
         return new CategoryDto(
                 category.getId(),
@@ -116,7 +122,7 @@ public class CategoryService {
                 messages.size(),
                 windowTotal == 0 ? 0d : (double) messages.size() / windowTotal,
                 typicalPriority(messages),
-                matchedBy,
+                rules,
                 (int)
                         messages.stream()
                                 .filter(m -> m.getCategorySource() == CategorySource.USER)
@@ -140,7 +146,7 @@ public class CategoryService {
                 .orElse(null);
     }
 
-    private Map<UUID, List<String>> matchedByPatterns() {
+    private Map<UUID, List<CategoryRuleDto>> rulesByCategory() {
         return categoryRuleRepository.findAll().stream()
                 .collect(
                         Collectors.groupingBy(
@@ -161,8 +167,8 @@ public class CategoryService {
                                                                         .thenComparing(
                                                                                 CategoryRuleEntity
                                                                                         ::getPattern))
-                                                        .map(CategoryRuleEntity::getPattern)
-                                                        .limit(MATCHED_BY_LIMIT)
+                                                        .map(CategoryRuleDto::from)
+                                                        .limit(RULES_LIMIT)
                                                         .toList())));
     }
 
@@ -314,12 +320,7 @@ public class CategoryService {
             category.setColor(request.color());
         }
 
-        return CategoryDto.empty(
-                category,
-                categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(category).stream()
-                        .map(CategoryRuleEntity::getPattern)
-                        .limit(MATCHED_BY_LIMIT)
-                        .toList());
+        return CategoryDto.empty(category, rulesOf(category));
     }
 
     /**
@@ -395,12 +396,35 @@ public class CategoryService {
             log.info("Category feedback: {} '{}' -> {}", type.wire(), pattern, category.getName());
         }
 
-        return CategoryDto.empty(
-                category,
-                categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(category).stream()
-                        .map(CategoryRuleEntity::getPattern)
-                        .limit(MATCHED_BY_LIMIT)
-                        .toList());
+        return CategoryDto.empty(category, rulesOf(category));
+    }
+
+    private List<CategoryRuleDto> rulesOf(CategoryEntity category) {
+        return categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(category).stream()
+                .map(CategoryRuleDto::from)
+                .limit(RULES_LIMIT)
+                .toList();
+    }
+
+    /**
+     * Removes one pattern without touching the category it fed.
+     *
+     * <p>Mail already filed by it keeps its category: the rule explains how a message got there,
+     * not where it belongs, and silently re-opening a hundred settled messages because a pattern
+     * was retired would be a far larger action than the button implies.
+     */
+    @Transactional
+    public void deleteRule(UUID ruleId) {
+        CategoryRuleEntity rule =
+                categoryRuleRepository
+                        .findById(ruleId)
+                        .orElseThrow(() -> new CategoryRuleNotFoundException(ruleId));
+        log.info(
+                "Deleted category rule {} '{}' from {}",
+                rule.getType().wire(),
+                rule.getPattern(),
+                rule.getCategory().getName());
+        categoryRuleRepository.delete(rule);
     }
 
     /**
