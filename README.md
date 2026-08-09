@@ -38,7 +38,7 @@ matter:
 |---|---|---|
 | `hermes.shadow-mode` | `true` | Classify and store, push nothing. Phase 3 runs here for a few days. |
 | `hermes.gmail.refresh-token` | *(unset)* | Unset disables the polling path entirely; the rest of the service still comes up. |
-| `hermes.gmail.poll-interval` | `180s` | |
+| `hermes.gmail.poll-interval` | `30s` | Override with `GMAIL_POLL_INTERVAL`. Only the delta is fetched, so the cost per tick is one cheap quota unit. |
 | `hermes.gmail.snippet-length` | `500` | Characters of plaintext sent to the classifier. Data minimisation, not a display cap. |
 | `hermes.sidecar.base-url` | `http://127.0.0.1:8081` | Pod-local only — never a Service, never an Ingress. |
 | `hermes.digest.send-time` | `18:00` | In `hermes.timezone`. |

@@ -62,7 +62,10 @@ hermes:
     user-id: me
     redirect-uri: ${GMAIL_REDIRECT_URI:http://localhost:8080/api/v1/auth/google/callback}
     post-connect-redirect: ${GMAIL_POST_CONNECT_REDIRECT:/settings?connected=1}
-    poll-interval: 180s
+    # history.list costs one cheap quota unit per tick and only the delta is fetched, so the floor
+    # here is latency-to-notice, not API budget. Overridable so it can be tuned in the ConfigMap
+    # without a rebuild.
+    poll-interval: ${GMAIL_POLL_INTERVAL:30s}
     cold-start-max-messages: 100
     snippet-length: 500
   sidecar:
