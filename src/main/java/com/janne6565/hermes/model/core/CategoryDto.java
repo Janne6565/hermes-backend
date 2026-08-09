@@ -18,13 +18,13 @@ public record CategoryDto(
         @Schema(
                         description =
                                 "The priority this category's mail most often ended up with —"
-                                    + " observed, not configured. Categories never set priority.")
+                                        + " observed, not configured. Categories never set priority.")
                 Priority typicalPriority,
         @Schema(
                         description =
                                 "The rules that file mail into this category, oldest first. The"
-                                    + " table renders their patterns; the detail view lets you"
-                                    + " remove one.")
+                                        + " table renders their patterns; the detail view lets you"
+                                        + " remove one.")
                 List<CategoryRuleDto> rules,
         @Schema(description = "Messages the user moved into this category during the window")
                 int corrected) {

@@ -9,5 +9,4 @@ import jakarta.validation.constraints.Size;
 public record CreateCategoryRequest(
         @NotBlank @Size(max = 40) String name,
         @Schema(description = "Hex swatch, e.g. #6b8fa8", example = "#6b8fa8")
-                @Pattern(regexp = "^#[0-9a-fA-F]{6}$")
-                String color) {}
+                @Pattern(regexp = "^#[0-9a-fA-F]{6}$") String color) {}

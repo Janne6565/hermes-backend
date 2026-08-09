@@ -12,7 +12,7 @@
     <artifactId>hermes-backend</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>hermes-backend</name>
-    <description>Mail triage service — Gmail ingestion, classification, digest and ntfy delivery</description>
+    <description>Hermes — mail triage: Gmail ingestion, classification, digest and ntfy delivery</description>
 
     <properties>
         <java.version>25</java.version>

@@ -149,8 +149,8 @@ public class ClassificationService {
      * <p>The alternative was leaving those messages permanently uncategorised, which is what the
      * first cut did: about a third of this mailbox is settled by hard rules, so a third of the
      * categories screen was a single grey bar. A feature that only works for the mail the model
-     * happens to see is not worth the column. Switchable via
-     * {@code hermes.categories.classify-rule-hits} when credit matters more than coverage.
+     * happens to see is not worth the column. Switchable via {@code
+     * hermes.categories.classify-rule-hits} when credit matters more than coverage.
      */
     private Verdict classify(FetchedMessage fetched) {
         Optional<CategoryRuleEntity> categoryRule = categoryMatcher.match(fetched);

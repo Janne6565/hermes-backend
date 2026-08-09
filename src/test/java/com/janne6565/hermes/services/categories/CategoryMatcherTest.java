@@ -21,9 +21,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * Category matching has a different resolution order from the priority engine — most specific
- * wins, newest first within a tier — and getting that order wrong is invisible until a seeded
- * pattern quietly overrules something the user just corrected.
+ * Category matching has a different resolution order from the priority engine — most specific wins,
+ * newest first within a tier — and getting that order wrong is invisible until a seeded pattern
+ * quietly overrules something the user just corrected.
  */
 @ExtendWith(MockitoExtension.class)
 class CategoryMatcherTest {
@@ -69,8 +69,7 @@ class CategoryMatcherTest {
                                 rule(infrastructure, RuleType.DOMAIN, "hetzner.com", OLD),
                                 rule(billing, RuleType.SENDER, "billing@hetzner.com", OLD)));
 
-        Optional<CategoryRuleEntity> hit =
-                matcher.match(message("billing@hetzner.com", Map.of()));
+        Optional<CategoryRuleEntity> hit = matcher.match(message("billing@hetzner.com", Map.of()));
 
         assertThat(hit).isPresent();
         assertThat(hit.get().getCategory().getName()).isEqualTo("Billing");
@@ -112,8 +111,7 @@ class CategoryMatcherTest {
                                         "billing@hetzner.com",
                                         OLD.plus(30, ChronoUnit.DAYS))));
 
-        Optional<CategoryRuleEntity> hit =
-                matcher.match(message("billing@hetzner.com", Map.of()));
+        Optional<CategoryRuleEntity> hit = matcher.match(message("billing@hetzner.com", Map.of()));
 
         assertThat(hit).isPresent();
         assertThat(hit.get().getCategory().getName()).isEqualTo("Billing");

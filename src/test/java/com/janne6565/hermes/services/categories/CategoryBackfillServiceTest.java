@@ -20,7 +20,6 @@ import com.janne6565.hermes.repository.MessageRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,8 +35,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The backfill spends real credit, runs detached from any request, and rewrites rows the user is
- * looking at. The properties worth pinning are the ones that bound it: rules before tokens, one
- * run at a time, a hard cap on calls, a clean stop when the sidecar dies, per-message commits, and
+ * looking at. The properties worth pinning are the ones that bound it: rules before tokens, one run
+ * at a time, a hard cap on calls, a clean stop when the sidecar dies, per-message commits, and
  * priorities left strictly alone.
  */
 @ExtendWith(MockitoExtension.class)

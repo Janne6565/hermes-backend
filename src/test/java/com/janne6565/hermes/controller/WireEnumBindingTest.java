@@ -59,8 +59,7 @@ class WireEnumBindingTest {
     @Test
     void acceptsACategoryFilter() throws Exception {
         mockMvc()
-                .perform(
-                        get("/api/v1/messages").param("category", "billing"))
+                .perform(get("/api/v1/messages").param("category", "billing"))
                 .andExpect(status().isOk());
     }
 

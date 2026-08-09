@@ -39,8 +39,7 @@ public class WireEnumConverterConfiguration implements WebMvcConfigurer {
     static class CaseInsensitiveEnumConverterFactory implements ConverterFactory<String, Enum> {
 
         @Override
-        @NonNull
-        public <T extends Enum> Converter<String, T> getConverter(@NonNull Class<T> targetType) {
+        @NonNull public <T extends Enum> Converter<String, T> getConverter(@NonNull Class<T> targetType) {
             return source -> {
                 String trimmed = source.trim();
                 if (trimmed.isEmpty()) {
