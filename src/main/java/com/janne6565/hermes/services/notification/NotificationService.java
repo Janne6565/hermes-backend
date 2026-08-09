@@ -4,7 +4,9 @@ import com.janne6565.hermes.client.NtfyClient;
 import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.entity.AlertEventEntity;
 import com.janne6565.hermes.entity.MessageEntity;
+import com.janne6565.hermes.model.core.TestPushResultDto;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import lombok.RequiredArgsConstructor;
@@ -74,6 +76,28 @@ public class NotificationService {
                         alert.getTitle(),
                         "rotating_light",
                         null));
+    }
+
+    /**
+     * Sends a test push.
+     *
+     * <p>The only path here that skips both gates. A test that respected shadow mode would report
+     * success while delivering nothing, which is precisely the failure the button exists to rule
+     * out.
+     */
+    public TestPushResultDto sendTest() {
+        Instant sentAt = Instant.now(clock);
+        // nanoTime rather than the injected clock: this measures a real round trip, and the clock
+        // is fixed under test.
+        long startedNanos = System.nanoTime();
+        boolean delivered =
+                ntfyClient.publish(
+                        NtfyClient.Notification.normal(
+                                "hermes",
+                                "Test push — the channel works. Nothing was classified.",
+                                "white_check_mark"));
+        long durationMs = Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
+        return new TestPushResultDto(delivered, ntfyClient.topic(), durationMs, sentAt);
     }
 
     /** Sends the daily digest at default priority — informative, not interrupting. */

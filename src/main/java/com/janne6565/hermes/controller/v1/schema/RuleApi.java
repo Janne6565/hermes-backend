@@ -2,8 +2,11 @@ package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.action.CreateRuleRequest;
 import com.janne6565.hermes.model.action.FeedbackRequest;
+import com.janne6565.hermes.model.core.RuleDryRunDto;
 import com.janne6565.hermes.model.core.RuleDto;
+import com.janne6565.hermes.model.core.RuleType;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -32,6 +35,26 @@ public interface RuleApi {
     @ApiResponse(responseCode = "201", description = "Rule created")
     @ApiResponse(responseCode = "409", description = "An identical rule already exists")
     ResponseEntity<RuleDto> create(@Valid @RequestBody CreateRuleRequest request);
+
+    @GetMapping("/dry-run")
+    @Operation(
+            summary = "What a candidate rule would have done",
+            description =
+                    "Evaluates the pattern against recent stored mail so the consequence is visible"
+                            + " before the rule exists. Header rules are unsupported — headers are"
+                            + " not retained after classification.")
+    @ApiResponse(responseCode = "200", description = "Retrospective match counts")
+    ResponseEntity<RuleDryRunDto> dryRun(
+            @RequestParam RuleType type,
+            @RequestParam String pattern,
+            @Parameter(description = "How many recent messages to evaluate against")
+                    @RequestParam(defaultValue = "500")
+                    int sampleSize);
+
+    @GetMapping("/feedback/recent")
+    @Operation(summary = "Rules the user's own corrections produced, newest first")
+    @ApiResponse(responseCode = "200", description = "Recent feedback-derived rules")
+    ResponseEntity<List<RuleDto>> recentFeedback(@RequestParam(defaultValue = "5") int limit);
 
     @PostMapping("/{id}/enabled")
     @Operation(summary = "Enable or disable a rule without deleting it")

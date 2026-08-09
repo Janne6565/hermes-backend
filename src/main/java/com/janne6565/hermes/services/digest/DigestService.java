@@ -7,6 +7,7 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.AlertEventDto;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.DigestDto;
+import com.janne6565.hermes.model.core.DigestStatsDto;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.model.exception.DigestNotFoundException;
@@ -24,6 +25,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -116,6 +119,57 @@ public class DigestService {
         } catch (Exception exception) {
             throw new DigestNotFoundException(date);
         }
+    }
+
+    /**
+     * Per-day counts for the last {@code days} days, oldest first.
+     *
+     * <p>One query over the whole window rather than one per day: the chart is a small, frequently
+     * refreshed widget, and N round trips to render seven bars is the kind of thing that quietly
+     * becomes the slowest part of the screen.
+     */
+    @Transactional(readOnly = true)
+    public DigestStatsDto stats(int days) {
+        ZoneId zone = properties.getTimezone();
+        LocalDate today = LocalDate.now(clock);
+        LocalDate first = today.minusDays(days - 1L);
+
+        Instant from = first.atStartOfDay(zone).toInstant();
+        Instant to = today.plusDays(1).atStartOfDay(zone).toInstant();
+
+        Map<LocalDate, List<MessageEntity>> byDay =
+                messageRepository.findByReceivedAtBetweenOrderByReceivedAtDesc(from, to).stream()
+                        .collect(
+                                Collectors.groupingBy(
+                                        message ->
+                                                LocalDate.ofInstant(
+                                                        message.getReceivedAt(), zone)));
+
+        Set<LocalDate> stored =
+                digestRepository.findByDateBetween(first, today).stream()
+                        .map(DigestEntity::getDate)
+                        .collect(Collectors.toSet());
+
+        List<DigestStatsDto.Day> result = new ArrayList<>();
+        for (LocalDate date = first; !date.isAfter(today); date = date.plusDays(1)) {
+            List<MessageEntity> messages = byDay.getOrDefault(date, List.of());
+            result.add(
+                    new DigestStatsDto.Day(
+                            date,
+                            countOf(messages, Priority.HIGH),
+                            countOf(messages, Priority.NORMAL),
+                            countOf(messages, Priority.NOISE),
+                            (int)
+                                    messages.stream()
+                                            .filter(message -> message.getNotifiedAt() != null)
+                                            .count(),
+                            stored.contains(date)));
+        }
+        return new DigestStatsDto(List.copyOf(result));
+    }
+
+    private static int countOf(List<MessageEntity> messages, Priority priority) {
+        return (int) messages.stream().filter(message -> message.getPriority() == priority).count();
     }
 
     DigestDto build(LocalDate date) {

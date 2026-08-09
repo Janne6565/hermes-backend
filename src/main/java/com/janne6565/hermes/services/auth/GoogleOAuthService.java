@@ -39,7 +39,12 @@ public class GoogleOAuthService {
     private static final String AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth";
     private static final String TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token";
     private static final String USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v2/userinfo";
-    private static final String SCOPE = "https://www.googleapis.com/auth/gmail.readonly email";
+
+    /**
+     * Read-only, and public so the settings screen can state the exact scope rather than a
+     * hand-copied approximation of it.
+     */
+    public static final String SCOPE = "https://www.googleapis.com/auth/gmail.readonly email";
 
     /** A consent round-trip that takes longer than this is almost certainly abandoned. */
     private static final Duration STATE_TTL = Duration.ofMinutes(10);

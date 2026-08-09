@@ -38,6 +38,25 @@ public class MessageQueryService {
     @Transactional(readOnly = true)
     public List<MessageDto> search(
             Priority priority, LocalDate date, String sender, String query, int limit) {
+        return search(priority, date, null, null, sender, null, query, limit);
+    }
+
+    /**
+     * The full search surface, one predicate per supported query token.
+     *
+     * <p>{@code date} pins a single day; {@code after}/{@code before} bound a range. They compose,
+     * but the UI only ever sends one or the other.
+     */
+    @Transactional(readOnly = true)
+    public List<MessageDto> search(
+            Priority priority,
+            LocalDate date,
+            LocalDate after,
+            LocalDate before,
+            String sender,
+            ClassifiedBy classifiedBy,
+            String query,
+            int limit) {
         Specification<MessageEntity> specification =
                 (root, criteriaQuery, builder) -> {
                     List<Predicate> predicates = new ArrayList<>();
@@ -49,6 +68,24 @@ public class MessageQueryService {
                         Instant to =
                                 date.plusDays(1).atStartOfDay(properties.getTimezone()).toInstant();
                         predicates.add(builder.between(root.get("receivedAt"), from, to));
+                    }
+                    if (after != null) {
+                        predicates.add(
+                                builder.greaterThanOrEqualTo(
+                                        root.get("receivedAt"),
+                                        after.atStartOfDay(properties.getTimezone()).toInstant()));
+                    }
+                    if (before != null) {
+                        // Exclusive upper bound at the *start* of the named day, so
+                        // `before:2026-08-09`
+                        // means "strictly earlier than the 9th" rather than silently including it.
+                        predicates.add(
+                                builder.lessThan(
+                                        root.get("receivedAt"),
+                                        before.atStartOfDay(properties.getTimezone()).toInstant()));
+                    }
+                    if (classifiedBy != null) {
+                        predicates.add(builder.equal(root.get("classifiedBy"), classifiedBy));
                     }
                     if (sender != null && !sender.isBlank()) {
                         predicates.add(

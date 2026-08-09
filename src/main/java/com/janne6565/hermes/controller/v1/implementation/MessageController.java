@@ -2,6 +2,7 @@ package com.janne6565.hermes.controller.v1.implementation;
 
 import com.janne6565.hermes.controller.v1.schema.MessageApi;
 import com.janne6565.hermes.model.action.DismissRequest;
+import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.services.classification.MessageQueryService;
@@ -20,8 +21,17 @@ public class MessageController implements MessageApi {
 
     @Override
     public ResponseEntity<List<MessageDto>> search(
-            Priority priority, LocalDate date, String sender, String q, int limit) {
-        return ResponseEntity.ok(messageQueryService.search(priority, date, sender, q, limit));
+            Priority priority,
+            LocalDate date,
+            LocalDate after,
+            LocalDate before,
+            String sender,
+            ClassifiedBy classifiedBy,
+            String q,
+            int limit) {
+        return ResponseEntity.ok(
+                messageQueryService.search(
+                        priority, date, after, before, sender, classifiedBy, q, limit));
     }
 
     @Override

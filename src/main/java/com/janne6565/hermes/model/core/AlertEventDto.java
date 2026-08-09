@@ -14,9 +14,19 @@ public record AlertEventDto(
         String app,
         Instant receivedAt,
         Instant resolvedAt,
-        boolean notified) {
+        boolean notified,
+        @Schema(description = "When the operator acknowledged it — not the same as resolved")
+                Instant acknowledgedAt,
+        @Schema(description = "Pushes for this alert are suppressed until this instant")
+                Instant snoozedUntil,
+        @Schema(description = "Link back to the tool that owns this alert, when one is configured")
+                String sourceUrl) {
 
     public static AlertEventDto from(AlertEventEntity entity) {
+        return from(entity, null);
+    }
+
+    public static AlertEventDto from(AlertEventEntity entity, String sourceUrl) {
         return new AlertEventDto(
                 entity.getId(),
                 entity.getSource(),
@@ -25,6 +35,9 @@ public record AlertEventDto(
                 entity.getAppName(),
                 entity.getReceivedAt(),
                 entity.getResolvedAt(),
-                entity.isNotified());
+                entity.isNotified(),
+                entity.getAcknowledgedAt(),
+                entity.getSnoozedUntil(),
+                sourceUrl);
     }
 }

@@ -2,6 +2,7 @@ package com.janne6565.hermes.controller.v1.implementation;
 
 import com.janne6565.hermes.controller.v1.schema.DigestApi;
 import com.janne6565.hermes.model.core.DigestDto;
+import com.janne6565.hermes.model.core.DigestStatsDto;
 import com.janne6565.hermes.services.digest.DigestService;
 import java.time.LocalDate;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,11 @@ public class DigestController implements DigestApi {
     @Override
     public ResponseEntity<DigestDto> today() {
         return ResponseEntity.ok(digestService.today());
+    }
+
+    @Override
+    public ResponseEntity<DigestStatsDto> stats(int days) {
+        return ResponseEntity.ok(digestService.stats(days));
     }
 
     @Override

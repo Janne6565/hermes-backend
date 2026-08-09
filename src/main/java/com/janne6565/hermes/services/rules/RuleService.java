@@ -4,6 +4,8 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.entity.RuleEntity;
 import com.janne6565.hermes.model.action.CreateRuleRequest;
 import com.janne6565.hermes.model.action.FeedbackRequest;
+import com.janne6565.hermes.model.core.Priority;
+import com.janne6565.hermes.model.core.RuleDryRunDto;
 import com.janne6565.hermes.model.core.RuleDto;
 import com.janne6565.hermes.model.core.RuleSource;
 import com.janne6565.hermes.model.core.RuleType;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +45,57 @@ public class RuleService {
                         request.priority(),
                         RuleSource.MANUAL,
                         true));
+    }
+
+    /**
+     * Evaluates a candidate rule against recent stored mail.
+     *
+     * <p>The point is to make the consequence visible before the rule exists: "would have matched
+     * 47 of the last 500, none of them high" is the difference between a safe noise rule and one
+     * that would have swallowed a supervisor's deadline.
+     */
+    @Transactional(readOnly = true)
+    public RuleDryRunDto dryRun(RuleType type, String pattern, int sampleSize) {
+        if (pattern == null || pattern.isBlank()) {
+            return RuleDryRunDto.unsupported("no pattern");
+        }
+        if (type == RuleType.HEADER) {
+            // Headers are dropped after classification — data minimisation, and there is nothing
+            // left to match against. A zero here would read as "this would never match".
+            return RuleDryRunDto.unsupported("headers are not retained after classification");
+        }
+
+        List<MessageEntity> sample =
+                messageRepository.findAllByOrderByReceivedAtDesc(PageRequest.of(0, sampleSize));
+
+        List<MessageEntity> matches =
+                sample.stream()
+                        .filter(
+                                message ->
+                                        RuleEngine.globMatches(
+                                                pattern,
+                                                type == RuleType.DOMAIN
+                                                        ? RuleEngine.domainOf(message.getSender())
+                                                        : RuleEngine.emailAddress(
+                                                                message.getSender())))
+                        .toList();
+
+        int matchedHigh =
+                (int)
+                        matches.stream()
+                                .filter(message -> message.getPriority() == Priority.HIGH)
+                                .count();
+
+        return new RuleDryRunDto(true, null, sample.size(), matches.size(), matchedHigh);
+    }
+
+    /** The most recent rules the user's own corrections produced. */
+    @Transactional(readOnly = true)
+    public List<RuleDto> recentFeedback(int limit) {
+        return ruleRepository.findBySourceOrderByCreatedAtDesc(RuleSource.FEEDBACK).stream()
+                .limit(limit)
+                .map(RuleDto::from)
+                .toList();
     }
 
     @Transactional

@@ -3,6 +3,7 @@ package com.janne6565.hermes.client;
 import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.model.core.Priority;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -114,6 +115,36 @@ public class SidecarClient {
 
     public Optional<String> lastError() {
         return Optional.ofNullable(lastError);
+    }
+
+    /**
+     * Asks the sidecar what it knows about its own credentials.
+     *
+     * <p>Deliberately a live call rather than cached state: the health screen is the one place that
+     * has to be current, and it is a loopback request to a process in the same pod. A failure is
+     * reported as empty rather than as a fabricated "unknown" row.
+     */
+    public Optional<SidecarHealth> health() {
+        if (!enabled) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.ofNullable(
+                    restClient.get().uri("/health").retrieve().body(SidecarHealth.class));
+        } catch (Exception exception) {
+            // A sidecar that is down still answers the *question* — it has no working credential
+            // to report — but "we could not ask" and "the answer is no" are different states, so
+            // this stays empty and the caller decides how to render it.
+            log.debug("Sidecar health probe failed: {}", exception.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /** The sidecar's own view of itself, including what it can see of its credentials. */
+    public record SidecarHealth(
+            String status, String model, String lastError, Credentials credentials) {
+
+        public record Credentials(boolean oauthToken, boolean apiKeyUnset, Instant expiresAt) {}
     }
 
     /** Exactly the fields the plan permits leaving the cluster: sender, subject, short snippet. */

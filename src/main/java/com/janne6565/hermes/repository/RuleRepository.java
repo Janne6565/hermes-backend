@@ -1,6 +1,7 @@
 package com.janne6565.hermes.repository;
 
 import com.janne6565.hermes.entity.RuleEntity;
+import com.janne6565.hermes.model.core.RuleSource;
 import com.janne6565.hermes.model.core.RuleType;
 import java.util.List;
 import java.util.Optional;
@@ -16,4 +17,9 @@ public interface RuleRepository extends JpaRepository<RuleEntity, UUID> {
     List<RuleEntity> findAllByOrderByCreatedAtDesc();
 
     Optional<RuleEntity> findByTypeAndPattern(RuleType type, String pattern);
+
+    /** Rules the user's own corrections produced, newest first. */
+    List<RuleEntity> findBySourceOrderByCreatedAtDesc(RuleSource source);
+
+    long countBySource(RuleSource source);
 }

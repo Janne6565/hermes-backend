@@ -1,6 +1,7 @@
 package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.action.DismissRequest;
+import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
 import io.swagger.v3.oas.annotations.Operation;
@@ -38,9 +39,20 @@ public interface MessageApi {
                     @RequestParam(required = false)
                     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
                     LocalDate date,
+            @Parameter(description = "Inclusive lower bound on the received date")
+                    @RequestParam(required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate after,
+            @Parameter(description = "Exclusive upper bound on the received date")
+                    @RequestParam(required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate before,
             @Parameter(description = "Substring match on the sender")
                     @RequestParam(required = false)
                     String sender,
+            @Parameter(description = "Which stage of the pipeline decided the priority")
+                    @RequestParam(required = false)
+                    ClassifiedBy classifiedBy,
             @Parameter(description = "Free text over subject, snippet and summary")
                     @RequestParam(required = false)
                     String q,

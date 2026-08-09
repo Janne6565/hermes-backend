@@ -72,4 +72,17 @@ public class AlertEventEntity {
     @Column(nullable = false)
     @Builder.Default
     private boolean notified = false;
+
+    /**
+     * When the operator said "I have seen this".
+     *
+     * <p>Deliberately not the same as {@link #resolvedAt}: only the alert source may declare an
+     * alert resolved. Acknowledging settles it on screen without claiming the problem went away.
+     */
+    @Column(name = "acknowledged_at")
+    private Instant acknowledgedAt;
+
+    /** Suppresses further pushes for this fingerprint until the given instant. */
+    @Column(name = "snoozed_until")
+    private Instant snoozedUntil;
 }

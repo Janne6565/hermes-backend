@@ -20,9 +20,21 @@ public record MessageDto(
         ClassifiedBy classifiedBy,
         Instant notifiedAt,
         boolean dismissed,
-        @Schema(description = "Deep link into the Gmail web client") String gmailUrl) {
+        @Schema(description = "Deep link into the Gmail web client") String gmailUrl,
+        @Schema(description = "Short origin label, or null — currently only \"infra\"")
+                String tag) {
 
     private static final String GMAIL_LINK = "https://mail.google.com/mail/u/0/#inbox/";
+
+    /**
+     * Senders that mean "this is machine-generated infrastructure mail".
+     *
+     * <p>A heuristic, but one over the sender address — a stable fact — rather than over the
+     * classifier's free-text reason, which is model output and changes wording between runs.
+     */
+    private static final String[] INFRA_SENDERS = {
+        "grafana", "signoz", "argocd", "alertmanager", "prometheus"
+    };
 
     public static MessageDto from(MessageEntity entity) {
         return new MessageDto(
@@ -39,7 +51,18 @@ public record MessageDto(
                 entity.getClassifiedBy(),
                 entity.getNotifiedAt(),
                 entity.getDismissedAt() != null,
-                GMAIL_LINK + entity.getGmailId());
+                GMAIL_LINK + entity.getGmailId(),
+                tagOf(entity.getSender()));
+    }
+
+    private static String tagOf(String sender) {
+        String lower = sender.toLowerCase(java.util.Locale.ROOT);
+        for (String known : INFRA_SENDERS) {
+            if (lower.contains(known)) {
+                return "infra";
+            }
+        }
+        return null;
     }
 
     private static String displayName(String sender) {

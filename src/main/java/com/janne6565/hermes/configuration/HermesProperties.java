@@ -153,6 +153,20 @@ public class HermesProperties {
          * probes that would otherwise be the loudest thing on the phone.
          */
         @NotNull private Duration pushDelay = Duration.ZERO;
+
+        /**
+         * Where an alert came from, so the UI can link back to the tool that owns it.
+         *
+         * <p>Hermes deliberately holds no alert history or dashboards of its own — it decides what
+         * is worth a push and hands you back to Grafana or SigNoz for everything else. Blank means
+         * no link is offered rather than a broken one.
+         */
+        private String grafanaUrl = "";
+
+        private String signozUrl = "";
+
+        /** Default snooze, used when the caller does not say how long. */
+        @NotNull private Duration defaultSnooze = Duration.ofHours(4);
     }
 
     @Getter

@@ -3,7 +3,9 @@ package com.janne6565.hermes.controller.v1.implementation;
 import com.janne6565.hermes.controller.v1.schema.RuleApi;
 import com.janne6565.hermes.model.action.CreateRuleRequest;
 import com.janne6565.hermes.model.action.FeedbackRequest;
+import com.janne6565.hermes.model.core.RuleDryRunDto;
 import com.janne6565.hermes.model.core.RuleDto;
+import com.janne6565.hermes.model.core.RuleType;
 import com.janne6565.hermes.services.rules.RuleService;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +28,16 @@ public class RuleController implements RuleApi {
     @Override
     public ResponseEntity<RuleDto> create(CreateRuleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(ruleService.create(request));
+    }
+
+    @Override
+    public ResponseEntity<RuleDryRunDto> dryRun(RuleType type, String pattern, int sampleSize) {
+        return ResponseEntity.ok(ruleService.dryRun(type, pattern, sampleSize));
+    }
+
+    @Override
+    public ResponseEntity<List<RuleDto>> recentFeedback(int limit) {
+        return ResponseEntity.ok(ruleService.recentFeedback(limit));
     }
 
     @Override

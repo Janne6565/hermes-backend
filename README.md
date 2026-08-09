@@ -43,6 +43,8 @@ matter:
 | `hermes.sidecar.base-url` | `http://127.0.0.1:8081` | Pod-local only — never a Service, never an Ingress. |
 | `hermes.digest.send-time` | `18:00` | In `hermes.timezone`. |
 | `hermes.alerts.webhook-secret` | *(unset)* | Unset means the webhook rejects everything — it fails closed. |
+| `hermes.alerts.grafana-url` / `signoz-url` | *(unset)* | Base URL for "open in …". Unset means no link is offered rather than a broken one. |
+| `hermes.alerts.default-snooze` | `4h` | Used when a snooze request does not say how long. |
 | `hermes.retention.message-days` | `90` | Enforced nightly at 03:30. |
 
 ## API
@@ -54,13 +56,22 @@ generates from.
 |---|---|
 | `GET /api/v1/digest/today` | Live digest — the Janus widget's source |
 | `GET /api/v1/digest/{date}` | A historical digest, read back exactly as delivered |
+| `GET /api/v1/digest/stats` | Per-day counts for the week chart |
 | `GET /api/v1/messages` | Search the local Postgres index (works while sync is down) |
+| `GET /api/v1/messages/{id}` | One message, so it stays linkable after leaving the digest |
 | `GET /api/v1/messages/high/open` | High-priority items not yet dismissed |
 | `POST /api/v1/messages/{id}/dismiss` | Clear an item; the mail in Gmail is untouched |
 | `GET/POST/DELETE /api/v1/rules` | Rule management |
 | `POST /api/v1/rules/feedback` | "This shouldn't have pinged me" → auto-creates the rule |
+| `GET /api/v1/rules/dry-run` | What a candidate rule would have matched, before you create it |
+| `GET /api/v1/rules/feedback/recent` | The rules your own corrections produced |
 | `POST /api/v1/events/alert` | Grafana / SigNoz intake (`X-Hermes-Token`) |
+| `GET /api/v1/events/alerts/overview` | The alerts screen in one read: open, resolved, routing, sources |
+| `POST /api/v1/events/alerts/{id}/acknowledge` | Mark an alert seen — does *not* resolve it |
+| `POST /api/v1/events/alerts/{id}/snooze` | Stop pushing that fingerprint for a while |
 | `GET /api/v1/health` | Health screen + widget traffic light |
+| `GET /api/v1/config` | The effective ConfigMap values the settings screen mirrors |
+| `POST /api/v1/notifications/test` | Test push — bypasses shadow mode and quiet hours on purpose |
 | `GET /actuator/health` | k8s liveness / readiness |
 
 ## Running locally

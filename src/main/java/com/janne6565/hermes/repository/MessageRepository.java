@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
@@ -24,6 +25,9 @@ public interface MessageRepository
 
     List<MessageEntity> findByReceivedAtBetweenOrderByReceivedAtDesc(Instant from, Instant to);
 
+    /** Most recent first, bounded — the sample a rule dry run is evaluated against. */
+    List<MessageEntity> findAllByOrderByReceivedAtDesc(Pageable pageable);
+
     List<MessageEntity> findByPriorityAndDismissedAtIsNullAndReceivedAtAfterOrderByReceivedAtDesc(
             Priority priority, Instant after);
 
@@ -31,6 +35,8 @@ public interface MessageRepository
     List<MessageEntity> findByClassifiedByOrderByReceivedAtAsc(ClassifiedBy classifiedBy);
 
     long countByClassifiedBy(ClassifiedBy classifiedBy);
+
+    long countByPriority(Priority priority);
 
     @Modifying
     @Query("delete from MessageEntity m where m.receivedAt < :cutoff")

@@ -2,14 +2,20 @@ package com.janne6565.hermes.services.alerts;
 
 import com.janne6565.hermes.entity.AlertEventEntity;
 import com.janne6565.hermes.model.action.AlertWebhookRequest;
+import com.janne6565.hermes.model.core.AlertEventDto;
+import com.janne6565.hermes.model.core.AlertOverviewDto;
 import com.janne6565.hermes.model.core.AlertSeverity;
 import com.janne6565.hermes.model.core.AlertSource;
+import com.janne6565.hermes.model.exception.AlertNotFoundException;
 import com.janne6565.hermes.repository.AlertEventRepository;
 import com.janne6565.hermes.services.notification.NotificationService;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,6 +34,7 @@ import tools.jackson.databind.ObjectMapper;
 public class AlertService {
 
     private final AlertEventRepository alertEventRepository;
+    private final AlertLinkResolver alertLinkResolver;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
@@ -63,11 +70,17 @@ public class AlertService {
         }
 
         AlertEventEntity alert = persist(request, severity, rawPayload, false);
-        if (severity.warrantsPush()) {
-            alert.setNotified(notificationService.pushAlert(alert));
-        } else {
+        if (!severity.warrantsPush()) {
             log.debug("Alert '{}' ({}) held for the digest", alert.getTitle(), severity.wire());
+            return alert;
         }
+        if (isSnoozed(fingerprint)) {
+            // Snoozed alerts are still recorded and still shown — snooze silences the phone, it
+            // does not hide the problem.
+            log.info("Alert '{}' is snoozed; recorded without pushing", alert.getTitle());
+            return alert;
+        }
+        alert.setNotified(notificationService.pushAlert(alert));
         return alert;
     }
 
@@ -95,6 +108,94 @@ public class AlertService {
     @Transactional(readOnly = true)
     public List<AlertEventEntity> between(Instant from, Instant to) {
         return alertEventRepository.findByReceivedAtBetweenOrderByReceivedAtDesc(from, to);
+    }
+
+    /** Everything the alerts screen shows, over a rolling window ending now. */
+    @Transactional(readOnly = true)
+    public AlertOverviewDto overview(int days) {
+        Instant now = Instant.now(clock);
+        Instant from = now.minus(Duration.ofDays(days));
+        List<AlertEventEntity> window =
+                alertEventRepository.findByReceivedAtBetweenOrderByReceivedAtDesc(from, now);
+
+        List<AlertEventEntity> unresolved =
+                window.stream().filter(alert -> alert.getResolvedAt() == null).toList();
+        List<AlertEventEntity> resolved =
+                window.stream().filter(alert -> alert.getResolvedAt() != null).toList();
+
+        // Counted over the whole window, including resolved ones: "you were pushed twice today"
+        // is a fact about the day, not about what is still open.
+        int pushed = (int) window.stream().filter(AlertEventEntity::isNotified).count();
+
+        return new AlertOverviewDto(
+                unresolved.stream().map(this::toDto).toList(),
+                resolved.stream().map(this::toDto).toList(),
+                new AlertOverviewDto.Routing(pushed, window.size() - pushed, resolved.size()),
+                sourceStates(window));
+    }
+
+    private List<AlertOverviewDto.SourceState> sourceStates(List<AlertEventEntity> window) {
+        return Arrays.stream(AlertSource.values())
+                .map(
+                        source -> {
+                            List<AlertEventEntity> forSource =
+                                    window.stream()
+                                            .filter(alert -> alert.getSource() == source)
+                                            .toList();
+                            // "Ever received" distinguishes a quiet source from one that was never
+                            // wired up — a webhook nobody configured looks identical to a healthy
+                            // one on a calm day, and those need different reactions.
+                            Instant lastEver =
+                                    alertEventRepository
+                                            .findFirstBySourceOrderByReceivedAtDesc(source)
+                                            .map(AlertEventEntity::getReceivedAt)
+                                            .orElse(null);
+                            return new AlertOverviewDto.SourceState(
+                                    source, forSource.size(), lastEver, lastEver != null);
+                        })
+                .toList();
+    }
+
+    /**
+     * Marks an alert as seen.
+     *
+     * <p>Does not touch {@code resolvedAt} — only the source may say the underlying problem is
+     * over, and an operator clicking "acknowledge" has not fixed anything yet.
+     */
+    @Transactional
+    public AlertEventDto acknowledge(UUID id) {
+        AlertEventEntity alert = require(id);
+        alert.setAcknowledgedAt(Instant.now(clock));
+        return toDto(alert);
+    }
+
+    /** Suppresses pushes for this alert's fingerprint until the snooze expires. */
+    @Transactional
+    public AlertEventDto snooze(UUID id, Duration duration) {
+        AlertEventEntity alert = require(id);
+        alert.setSnoozedUntil(Instant.now(clock).plus(duration));
+        return toDto(alert);
+    }
+
+    private AlertEventEntity require(UUID id) {
+        return alertEventRepository.findById(id).orElseThrow(() -> new AlertNotFoundException(id));
+    }
+
+    public AlertEventDto toDto(AlertEventEntity entity) {
+        return AlertEventDto.from(entity, alertLinkResolver.urlFor(entity));
+    }
+
+    /**
+     * @return true when a live snooze covers this fingerprint.
+     */
+    private boolean isSnoozed(String fingerprint) {
+        if (fingerprint == null) {
+            return false;
+        }
+        return alertEventRepository
+                .findFirstByFingerprintAndSnoozedUntilAfterOrderBySnoozedUntilDesc(
+                        fingerprint, Instant.now(clock))
+                .isPresent();
     }
 
     /**
