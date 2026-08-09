@@ -33,9 +33,9 @@ public record AssignCategoryRequest(
     /**
      * Boxed, with the default resolved here rather than by the deserialiser.
      *
-     * <p>Jackson 3 fails a record's primitive component when the property is absent, so a
-     * {@code boolean} here turned every request that omitted this optional flag into a 400 — which
-     * is exactly what the "needs a call" chips send. {@code DismissRequest} already models optional
+     * <p>Jackson 3 fails a record's primitive component when the property is absent, so a {@code
+     * boolean} here turned every request that omitted this optional flag into a 400 — which is
+     * exactly what the "needs a call" chips send. {@code DismissRequest} already models optional
      * booleans this way; this is the same shape.
      */
     public boolean shouldApplyToDomain() {

@@ -94,8 +94,10 @@ class RequestBindingTest {
                 .perform(
                         post("/api/v1/categories/assign")
                                 .contentType(MediaType.APPLICATION_JSON)
-                                .content("""
-                                        {"messageId":"%s"}""".formatted(ABSENT_UUID)))
+                                .content(
+                                        """
+                                        {"messageId":"%s"}"""
+                                                .formatted(ABSENT_UUID)))
                 .andExpect(status().isBadRequest());
     }
 }

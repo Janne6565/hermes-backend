@@ -27,8 +27,8 @@ import org.springframework.transaction.support.TransactionTemplate;
  * wrong in three ways at once and all three showed up on the first real run: the HTTP call blocked
  * for as long as the work took, a Postgres transaction sat {@code idle in transaction} for minutes
  * while the thread waited on the classifier, and because everything committed at the end, five
- * minutes of successful classifications were still invisible — and would have been lost entirely
- * to a pod restart.
+ * minutes of successful classifications were still invisible — and would have been lost entirely to
+ * a pod restart.
  *
  * <p>So the work is detached from the request and the transaction is scoped to the smallest thing
  * worth keeping: one message. Each classification commits on its own, which makes the run
@@ -202,7 +202,9 @@ public class CategoryBackfillService {
                 lastOutcome);
     }
 
-    /** Free and fast, so it runs over everything in one short transaction before any token spend. */
+    /**
+     * Free and fast, so it runs over everything in one short transaction before any token spend.
+     */
     private int applyRules() {
         Integer applied =
                 transactionTemplate.execute(

@@ -63,7 +63,7 @@ public class GmailClientProvider {
                             GoogleNetHttpTransport.newTrustedTransport(),
                             GsonFactory.getDefaultInstance(),
                             new HttpCredentialsAdapter(credentials))
-                    .setApplicationName("hermes-mail-triage")
+                    .setApplicationName("hermes")
                     .build();
         } catch (java.security.GeneralSecurityException exception) {
             throw new IOException("Could not build the Gmail transport", exception);

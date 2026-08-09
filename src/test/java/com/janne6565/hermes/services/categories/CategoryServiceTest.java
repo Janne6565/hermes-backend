@@ -14,12 +14,12 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.CategorySource;
-import com.janne6565.hermes.model.exception.CategoryRuleNotFoundException;
-import com.janne6565.hermes.model.exception.DuplicateCategoryException;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.model.core.RuleType;
+import com.janne6565.hermes.model.exception.CategoryRuleNotFoundException;
+import com.janne6565.hermes.model.exception.DuplicateCategoryException;
 import com.janne6565.hermes.repository.CategoryRepository;
 import com.janne6565.hermes.repository.CategoryRuleRepository;
 import com.janne6565.hermes.repository.MessageRepository;
@@ -31,7 +31,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -82,9 +81,9 @@ class CategoryServiceTest {
 
         when(messageRepository.findById(message.getId())).thenReturn(Optional.of(message));
         when(categoryRepository.findById(billing.getId())).thenReturn(Optional.of(billing));
-        when(categoryRuleRepository.findByTypeAndPattern(any(), any())).thenReturn(Optional.empty());
-        when(categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(any()))
-                .thenReturn(List.of());
+        when(categoryRuleRepository.findByTypeAndPattern(any(), any()))
+                .thenReturn(Optional.empty());
+        when(categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(any())).thenReturn(List.of());
     }
 
     private AssignCategoryRequest assignTo(UUID categoryId, boolean domain, Boolean learn) {

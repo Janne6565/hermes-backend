@@ -14,5 +14,4 @@ import jakarta.validation.constraints.Size;
 @Schema(description = "Rename or recolour a category; omitted fields are left alone")
 public record UpdateCategoryRequest(
         @Size(min = 1, max = 40) String name,
-        @Schema(description = "Hex swatch, e.g. #6b8fa8") @Pattern(regexp = "^#[0-9a-fA-F]{6}$")
-                String color) {}
+        @Schema(description = "Hex swatch, e.g. #6b8fa8") @Pattern(regexp = "^#[0-9a-fA-F]{6}$") String color) {}

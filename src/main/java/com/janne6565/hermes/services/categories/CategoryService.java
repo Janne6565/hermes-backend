@@ -5,12 +5,12 @@ import com.janne6565.hermes.entity.CategoryEntity;
 import com.janne6565.hermes.entity.CategoryRuleEntity;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
-import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
 import com.janne6565.hermes.model.action.UpdateCategoryRequest;
+import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.core.CategoryDto;
-import com.janne6565.hermes.model.core.CategoryRuleDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
+import com.janne6565.hermes.model.core.CategoryRuleDto;
 import com.janne6565.hermes.model.core.CategorySource;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.model.core.RuleSource;
@@ -240,9 +240,7 @@ public class CategoryService {
             List<MessageEntity> window) {
         return window.stream()
                 .filter(message -> message.getCategoryCorrectedAt() != null)
-                .sorted(
-                        Comparator.comparing(MessageEntity::getCategoryCorrectedAt)
-                                .reversed())
+                .sorted(Comparator.comparing(MessageEntity::getCategoryCorrectedAt).reversed())
                 .limit(5)
                 .map(
                         message ->

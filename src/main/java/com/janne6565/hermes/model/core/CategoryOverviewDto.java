@@ -23,8 +23,8 @@ public record CategoryOverviewDto(
         @Schema(
                         description =
                                 "State of the categorisation backfill. Carried on the overview"
-                                    + " rather than a separate endpoint so the screen's progress"
-                                    + " and its numbers come from one read and cannot disagree.")
+                                        + " rather than a separate endpoint so the screen's progress"
+                                        + " and its numbers come from one read and cannot disagree.")
                 BackfillStatusDto backfill) {
 
     /**

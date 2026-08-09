@@ -154,7 +154,7 @@ public class HermesProperties {
     @Setter
     public static class Ntfy {
         @NotBlank private String baseUrl = "https://ntfy.jannekeipert.de";
-        @NotBlank private String topic = "janus-mail";
+        @NotBlank private String topic = "hermes-mail";
 
         /** Bearer token for the publishing user. The server is deny-all by default. */
         private String token = "";

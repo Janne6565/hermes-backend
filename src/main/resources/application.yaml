@@ -49,7 +49,9 @@ hermes:
   timezone: ${HERMES_TIMEZONE:Europe/Berlin}
   # Base64 32 bytes — `openssl rand -base64 32`. Protects the stored Google refresh token.
   encryption-key: ${HERMES_ENCRYPTION_KEY:}
-  # Single-user gate on /api. Unset = open, which is only acceptable locally.
+  # Machine access to /api, for callers with no Authentik session (scripts, the Janus widget).
+  # Browsers are gated at the ingress by forward auth instead. Unset = open to anything that
+  # reaches the pod, which is only acceptable locally.
   admin-token: ${HERMES_ADMIN_TOKEN:}
   # Phase 3 default. Everything is classified and stored; nothing pushes until this is flipped.
   shadow-mode: ${HERMES_SHADOW_MODE:true}
@@ -79,7 +81,7 @@ hermes:
     enabled: ${SIDECAR_ENABLED:true}
   ntfy:
     base-url: ${NTFY_URL:https://ntfy.jannekeipert.de}
-    topic: ${NTFY_TOPIC:janus-mail}
+    topic: ${NTFY_TOPIC:hermes-mail}
     token: ${NTFY_TOKEN:}
     timeout: 10s
   digest:

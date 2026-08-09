@@ -108,7 +108,17 @@ The scope stays `gmail.readonly` until phase 6. This service reads mail; it neve
 - The classifier only ever receives sender, subject and a 500-character plaintext snippet. Full
   bodies and attachments are never read out of the API response.
 - HTML is never parsed or rendered server-side.
-- `POST /api/v1/events/alert` is the only externally reachable endpoint. It authenticates with a
-  shared secret compared in constant time, and fails closed when the secret is unset.
+- Access to `/api` is gated by `ApiAccessFilter`, which takes either an Authentik forward-auth
+  session (`X-authentik-username`, stamped by Traefik from the outpost — browsers) or the admin
+  token in `X-Hermes-Token`. There is no login screen: the browser is stopped at the ingress,
+  before it reaches a pod.
+- The token path only helps on a router without the forward-auth middleware, since that middleware
+  runs before this filter. A machine caller therefore needs its path added to the `hermes-public`
+  Ingress, where the filter still demands the token.
+- `POST /api/v1/events/alert` and `GET /api/v1/auth/google/callback` are the two endpoints reachable
+  without either. The webhook authenticates with a shared secret compared in constant time and fails
+  closed when the secret is unset; the Google callback is bound to a flow by its single-use `state`.
+  They are served by a separate Traefik router with no forward-auth middleware — see
+  `hermes-deployment/overlays/main/ingress.yaml`.
 - Gmail refresh token and ntfy token are account-level credentials: sealed secrets only, never
   logged.
