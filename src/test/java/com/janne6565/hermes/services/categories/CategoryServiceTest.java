@@ -184,6 +184,20 @@ class CategoryServiceTest {
     }
 
     @Test
+    void confirmingTheGuessRecordsNoChange() {
+        // The user agreeing with the classifier is an action worth keeping — it writes the rule —
+        // but it is not a change, and a trail saying "X (was X)" reads as a defect.
+        when(categoryRepository.findById(infrastructure.getId()))
+                .thenReturn(Optional.of(infrastructure));
+
+        service.assign(assignTo(infrastructure.getId(), false, null));
+
+        assertThat(message.getCategory()).isEqualTo(infrastructure);
+        assertThat(message.getCategorySource()).isEqualTo(CategorySource.USER);
+        assertThat(message.getCategoryPrevious()).isNull();
+    }
+
+    @Test
     void learningCanBeSwitchedOffForAOneOff() {
         service.assign(assignTo(billing.getId(), false, false));
 

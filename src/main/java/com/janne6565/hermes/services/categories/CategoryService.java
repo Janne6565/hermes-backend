@@ -368,9 +368,16 @@ public class CategoryService {
                         .orElseThrow(() -> new CategoryNotFoundException(request.categoryId()));
 
         CategoryEntity previous = message.getCategory();
-        // A second correction of the same message should still show what the *classifier* said, not
-        // the user's own last answer, so the trail is only written on the first override.
-        if (message.getCategorySource() != CategorySource.USER) {
+        // Two conditions, for two different reasons.
+        //
+        // Not already USER: a second correction of the same message should still show what the
+        // *classifier* said, not the user's own last answer.
+        //
+        // Actually different: confirming the guess is a real action — it writes the rule and it
+        // counts — but recording it as a change renders in the trail as "Newsletters (was
+        // Newsletters)", which reads as a bug rather than as a confirmation.
+        if (message.getCategorySource() != CategorySource.USER
+                && (previous == null || !previous.getId().equals(category.getId()))) {
             message.setCategoryPrevious(previous);
         }
         message.setCategory(category);
