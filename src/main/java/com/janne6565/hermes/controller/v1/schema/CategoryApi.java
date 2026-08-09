@@ -2,7 +2,7 @@ package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
-import com.janne6565.hermes.model.core.CategoryBackfillDto;
+import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
 import io.swagger.v3.oas.annotations.Operation;
@@ -58,11 +58,15 @@ public interface CategoryApi {
     @Operation(
             summary = "Categorise mail that predates the feature",
             description =
-                    "Category rules first, which are free, then the classifier for whatever they"
-                        + " miss — one Haiku turn each, bounded by `limit`. Priorities are never"
-                        + " re-decided. Resumable: run it again to continue where it stopped.")
-    @ApiResponse(responseCode = "200", description = "What the run did")
-    ResponseEntity<CategoryBackfillDto> backfill(
+                    "Starts a background run and returns immediately — the work takes one Haiku"
+                        + " turn per message and must not be held open by an HTTP request. Category"
+                        + " rules run first and are free; the classifier handles what they miss,"
+                        + " bounded by `limit`, committing each message as it goes. Priorities are"
+                        + " never re-decided. Poll GET /api/v1/categories for progress. A second"
+                        + " call while a run is in flight is a no-op that reports the running"
+                        + " state.")
+    @ApiResponse(responseCode = "200", description = "The state of the run that was just started")
+    ResponseEntity<BackfillStatusDto> backfill(
             @Parameter(description = "Cap on classifier calls in this run")
                     @RequestParam(defaultValue = "200")
                     int limit);

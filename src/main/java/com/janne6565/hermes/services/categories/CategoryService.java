@@ -5,6 +5,7 @@ import com.janne6565.hermes.entity.CategoryEntity;
 import com.janne6565.hermes.entity.CategoryRuleEntity;
 import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
+import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
@@ -69,7 +70,7 @@ public class CategoryService {
     }
 
     @Transactional(readOnly = true)
-    public CategoryOverviewDto overview(int windowDays) {
+    public CategoryOverviewDto overview(int windowDays, BackfillStatusDto backfill) {
         Instant since = Instant.now().minus(windowDays, ChronoUnit.DAYS);
         List<CategoryEntity> categories = categoryRepository.findAllByOrderByPositionAscNameAsc();
         List<MessageEntity> window = messageRepository.findByReceivedAtAfter(since);
@@ -94,7 +95,7 @@ public class CategoryService {
                         .toList();
 
         return new CategoryOverviewDto(
-                windowDays, rows, mix(window), unsure(), recentCorrections(window));
+                windowDays, rows, mix(window), unsure(), recentCorrections(window), backfill);
     }
 
     private CategoryDto row(

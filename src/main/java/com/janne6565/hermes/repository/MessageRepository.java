@@ -58,6 +58,11 @@ public interface MessageRepository
                     + " order by m.receivedAt asc")
     List<MessageEntity> findUncategorised();
 
+    @Query(
+            "select count(m) from MessageEntity m where m.categorySource is null"
+                    + " or m.categorySource = com.janne6565.hermes.model.core.CategorySource.NONE")
+    long countUncategorised();
+
     long countByClassifiedBy(ClassifiedBy classifiedBy);
 
     long countByPriority(Priority priority);
