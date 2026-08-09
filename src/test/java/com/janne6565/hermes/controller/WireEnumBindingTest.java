@@ -57,6 +57,14 @@ class WireEnumBindingTest {
     }
 
     @Test
+    void acceptsACategoryFilter() throws Exception {
+        mockMvc()
+                .perform(
+                        get("/api/v1/messages").param("category", "billing"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void aGenuineTypoIsStillARejection() throws Exception {
         // Leniency about case must not become leniency about meaning — an unknown tier has to fail
         // loudly rather than silently widening the query to everything.

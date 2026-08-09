@@ -54,6 +54,9 @@ public interface MessageApi {
             @Parameter(description = "Which stage of the pipeline decided the priority")
                     @RequestParam(required = false)
                     ClassifiedBy classifiedBy,
+            @Parameter(description = "Restrict to one category, by name (case-insensitive)")
+                    @RequestParam(required = false)
+                    String category,
             @Parameter(description = "Free text over subject, snippet and summary")
                     @RequestParam(required = false)
                     String q,
