@@ -2,6 +2,7 @@ package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
+import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
@@ -14,6 +15,7 @@ import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -44,6 +46,20 @@ public interface CategoryApi {
     @ApiResponse(responseCode = "201", description = "Category created")
     @ApiResponse(responseCode = "409", description = "A category with that name already exists")
     ResponseEntity<CategoryDto> create(@Valid @RequestBody CreateCategoryRequest request);
+
+    @PatchMapping("/{id}")
+    @Operation(
+            summary = "Rename or recolour a category",
+            description =
+                    "Built-ins are renameable even though they cannot be deleted: deleting one"
+                        + " shrinks the classifier's vocabulary, renaming only changes the label"
+                        + " it answers with. Messages keep their id-based link, so nothing is"
+                        + " migrated and the next classification already uses the new name.")
+    @ApiResponse(responseCode = "200", description = "Category updated")
+    @ApiResponse(responseCode = "404", description = "No such category")
+    @ApiResponse(responseCode = "409", description = "Another category already has that name")
+    ResponseEntity<CategoryDto> rename(
+            @PathVariable UUID id, @Valid @RequestBody UpdateCategoryRequest request);
 
     @DeleteMapping("/{id}")
     @Operation(

@@ -42,6 +42,13 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Slf4j
 public class CategoryBackfillService {
 
+    /**
+     * How many failures in a row mean "the classifier is down" rather than "that one was slow".
+     * Three, because the run is resumable — giving up early costs a button press, and grinding on
+     * through a genuine outage costs a timeout per remaining message.
+     */
+    private static final int MAX_CONSECUTIVE_FAILURES = 3;
+
     private final MessageRepository messageRepository;
     private final CategoryMatcher categoryMatcher;
     private final CategoryService categoryService;
@@ -145,6 +152,7 @@ public class CategoryBackfillService {
         List<String> vocabulary = categoryService.names();
         int byModel = 0;
         int skipped = 0;
+        int consecutiveFailures = 0;
 
         for (Candidate candidate : candidates) {
             // Deliberately outside any transaction: this is the slow part, and holding a database
@@ -158,10 +166,23 @@ public class CategoryBackfillService {
                                     vocabulary));
 
             if (response.isEmpty()) {
-                lastOutcome = "sidecar_unavailable";
-                log.warn("Backfill stopped: sidecar unavailable after {} messages", byModel);
-                break;
+                // One failure is not an outage. The first version bailed on any empty response,
+                // which was right when the only failure mode was "the sidecar is down" — but the
+                // real one turned out to be an occasional slow turn, and a whole run dying after
+                // two messages because one was slow is worse than skipping that message.
+                consecutiveFailures++;
+                if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                    lastOutcome = "sidecar_unavailable";
+                    log.warn(
+                            "Backfill stopped after {} consecutive classifier failures ({} done)",
+                            consecutiveFailures,
+                            byModel);
+                    break;
+                }
+                log.debug("Classifier failed for one message; continuing");
+                continue;
             }
+            consecutiveFailures = 0;
             if (persist(candidate.id(), response.get())) {
                 byModel++;
             } else {

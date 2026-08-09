@@ -7,6 +7,7 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.action.AssignCategoryRequest;
 import com.janne6565.hermes.model.core.BackfillStatusDto;
 import com.janne6565.hermes.model.action.CreateCategoryRequest;
+import com.janne6565.hermes.model.action.UpdateCategoryRequest;
 import com.janne6565.hermes.model.core.CategoryDto;
 import com.janne6565.hermes.model.core.CategoryOverviewDto;
 import com.janne6565.hermes.model.core.CategorySource;
@@ -280,6 +281,45 @@ public class CategoryService {
                                 .build());
         log.info("Created category '{}'", name);
         return CategoryDto.empty(created, List.of());
+    }
+
+    /**
+     * Renames and/or recolours a category.
+     *
+     * <p>Built-ins are renameable, unlike deletable. Deleting one shrinks what the classifier is
+     * allowed to answer; renaming only changes the label it answers with, and the vocabulary is
+     * sent per request, so the next classification already uses the new name. The messages already
+     * filed under it keep their id-based link and need no migration.
+     */
+    @Transactional
+    public CategoryDto rename(UUID categoryId, UpdateCategoryRequest request) {
+        CategoryEntity category =
+                categoryRepository
+                        .findById(categoryId)
+                        .orElseThrow(() -> new CategoryNotFoundException(categoryId));
+
+        if (request.name() != null) {
+            String name = request.name().trim();
+            categoryRepository
+                    .findByNameIgnoreCase(name)
+                    .filter(other -> !other.getId().equals(categoryId))
+                    .ifPresent(
+                            other -> {
+                                throw new DuplicateCategoryException(name);
+                            });
+            log.info("Renamed category '{}' to '{}'", category.getName(), name);
+            category.setName(name);
+        }
+        if (request.color() != null) {
+            category.setColor(request.color());
+        }
+
+        return CategoryDto.empty(
+                category,
+                categoryRuleRepository.findByCategoryOrderByCreatedAtAsc(category).stream()
+                        .map(CategoryRuleEntity::getPattern)
+                        .limit(MATCHED_BY_LIMIT)
+                        .toList());
     }
 
     /**
