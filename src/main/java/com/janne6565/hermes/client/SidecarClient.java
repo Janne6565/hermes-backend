@@ -209,17 +209,24 @@ public class SidecarClient {
             String categoryAlternative) {}
 
     /**
-     * One day, as the narrator sees it.
+     * One day — or one span — as the narrator sees it.
      *
      * <p>Carries the same three fields per message the classifier was allowed — sender, subject and
      * the one-line summary it already produced — and never the body. The narrator is describing
      * work that has already been done, so it needs no more raw mail than the classifier did.
      *
-     * @param alerts titles of the day's unresolved alerts, so the summary can admit that something
-     *     is still on fire rather than closing on a tidy note.
+     * @param date the day, on the evening send. Null for a range.
+     * @param from first day of a span, set only by the ad-hoc range report. The sidecar picks its
+     *     prompt from which of {@code date} and {@code from}/{@code to} arrived, so exactly one of
+     *     the two forms must be filled in.
+     * @param to last day of that span, inclusive.
+     * @param alerts titles of the unresolved alerts in the period, so the summary can admit that
+     *     something is still on fire rather than closing on a tidy note.
      */
     public record DigestSummaryRequest(
             LocalDate date,
+            LocalDate from,
+            LocalDate to,
             DigestDto.Counts counts,
             List<Item> high,
             List<Item> normal,
@@ -227,7 +234,8 @@ public class SidecarClient {
             List<String> alerts,
             int unclassified) {
 
-        public record Item(String sender, String subject, String summary) {}
+        /** {@code date} is null on the daily path, where every line would carry the same one. */
+        public record Item(String sender, String subject, String summary, LocalDate date) {}
     }
 
     public record SummaryResponse(String narrative) {}

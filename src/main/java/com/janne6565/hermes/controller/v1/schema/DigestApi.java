@@ -1,6 +1,7 @@
 package com.janne6565.hermes.controller.v1.schema;
 
 import com.janne6565.hermes.model.core.DigestDto;
+import com.janne6565.hermes.model.core.DigestRangeDto;
 import com.janne6565.hermes.model.core.DigestStatsDto;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -46,6 +47,28 @@ public interface DigestApi {
             @Parameter(description = "How many days back, including today")
                     @RequestParam(defaultValue = "7")
                     int days);
+
+    @GetMapping("/range")
+    @Operation(
+            summary = "Build a digest over a chosen span of days",
+            description =
+                    "An ad-hoc report: built live from the messages in the span, narrated like the"
+                            + " evening digest, and then thrown away. Nothing is stored and nothing"
+                            + " is pushed, so running it never rewrites a delivered digest. Takes as"
+                            + " long as the narrator does — up to the sidecar timeout.")
+    @ApiResponse(responseCode = "200", description = "Range digest built")
+    @ApiResponse(
+            responseCode = "400",
+            description = "The span is inverted, longer than 92 days, or ends after today")
+    ResponseEntity<DigestRangeDto> range(
+            @Parameter(description = "First day of the span, inclusive")
+                    @RequestParam
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate from,
+            @Parameter(description = "Last day of the span, inclusive")
+                    @RequestParam
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate to);
 
     @GetMapping("/{date}")
     @Operation(summary = "A historical digest, read back exactly as it was delivered")

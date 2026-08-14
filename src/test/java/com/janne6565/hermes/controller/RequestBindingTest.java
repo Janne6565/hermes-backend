@@ -1,5 +1,6 @@
 package com.janne6565.hermes.controller;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -85,6 +86,32 @@ class RequestBindingTest {
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{}"))
                 .andExpect(status().isNotFound());
+    }
+
+    /**
+     * {@code /range} and {@code /{date}} share a path segment, and only one of them can win. If the
+     * date pattern took it, "range" would fail to parse as a LocalDate and the endpoint would
+     * answer 400 for every caller — the same class of bug as the binding failures above, and just
+     * as invisible to a unit test that calls the service directly.
+     */
+    @Test
+    void rangeIsRoutedAsAnEndpointRatherThanAsADate() throws Exception {
+        mockMvc()
+                .perform(
+                        get("/api/v1/digest/range")
+                                .param("from", "2026-08-01")
+                                .param("to", "2026-08-09"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void anInvertedRangeIsRejected() throws Exception {
+        mockMvc()
+                .perform(
+                        get("/api/v1/digest/range")
+                                .param("from", "2026-08-09")
+                                .param("to", "2026-08-01"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test

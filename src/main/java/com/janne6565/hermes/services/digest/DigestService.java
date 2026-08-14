@@ -8,6 +8,7 @@ import com.janne6565.hermes.entity.MessageEntity;
 import com.janne6565.hermes.model.core.AlertEventDto;
 import com.janne6565.hermes.model.core.ClassifiedBy;
 import com.janne6565.hermes.model.core.DigestDto;
+import com.janne6565.hermes.model.core.DigestRangeDto;
 import com.janne6565.hermes.model.core.DigestStatsDto;
 import com.janne6565.hermes.model.core.MessageDto;
 import com.janne6565.hermes.model.core.Priority;
@@ -19,6 +20,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -192,12 +194,61 @@ public class DigestService {
     }
 
     DigestDto build(LocalDate date) {
+        Span span = span(date, date);
+        return new DigestDto(
+                date,
+                span.counts(),
+                null,
+                span.high(),
+                span.normal(),
+                span.noise(),
+                span.alerts(),
+                span.unclassified(),
+                span.degraded(),
+                span.degradedReason(),
+                null);
+    }
+
+    /**
+     * The same tally over several days, for the ad-hoc range report.
+     *
+     * <p>Read-only and unstored by design: this is a question someone asked, not a record of
+     * something that was delivered. Nothing here touches {@code digestRepository}, so re-running it
+     * can never rewrite what the evening send already committed to.
+     */
+    @Transactional(readOnly = true)
+    public DigestRangeDto buildRange(LocalDate from, LocalDate to) {
+        Span span = span(from, to);
+        return new DigestRangeDto(
+                from,
+                to,
+                (int) ChronoUnit.DAYS.between(from, to) + 1,
+                span.counts(),
+                null,
+                span.high(),
+                span.normal(),
+                span.noise(),
+                span.alerts(),
+                span.unclassified(),
+                span.degraded(),
+                span.degradedReason());
+    }
+
+    /**
+     * Everything a digest says about a stretch of time, from the first day's start to the last
+     * day's end.
+     *
+     * <p>One query for the whole window rather than one per day — the range can be a quarter, and a
+     * round trip per day would make the report's cost scale with the span the user happened to
+     * pick.
+     */
+    private Span span(LocalDate from, LocalDate to) {
         ZoneId zone = properties.getTimezone();
-        Instant from = date.atStartOfDay(zone).toInstant();
-        Instant to = date.plusDays(1).atStartOfDay(zone).toInstant();
+        Instant start = from.atStartOfDay(zone).toInstant();
+        Instant end = to.plusDays(1).atStartOfDay(zone).toInstant();
 
         List<MessageEntity> messages =
-                messageRepository.findByReceivedAtBetweenOrderByReceivedAtDesc(from, to);
+                messageRepository.findByReceivedAtBetweenOrderByReceivedAtDesc(start, end);
 
         List<MessageDto> high = byPriority(messages, Priority.HIGH);
         List<MessageDto> normal = byPriority(messages, Priority.NORMAL);
@@ -215,12 +266,10 @@ public class DigestService {
                                 .count();
 
         List<AlertEventDto> alerts =
-                alertService.between(from, to).stream().map(AlertEventDto::from).toList();
+                alertService.between(start, end).stream().map(AlertEventDto::from).toList();
 
-        return new DigestDto(
-                date,
+        return new Span(
                 new DigestDto.Counts(high.size(), normal.size(), noise.size()),
-                null,
                 high,
                 normal,
                 summariseNoise(noise),
@@ -230,9 +279,19 @@ public class DigestService {
                 unclassified > 0
                         ? "%d message(s) are unclassified — the classifier was unavailable"
                                 .formatted(unclassified)
-                        : null,
-                null);
+                        : null);
     }
+
+    /** The shared shape of a day and a range, before either is dressed up as its own DTO. */
+    private record Span(
+            DigestDto.Counts counts,
+            List<MessageDto> high,
+            List<MessageDto> normal,
+            DigestDto.NoiseSummary noise,
+            List<AlertEventDto> alerts,
+            int unclassified,
+            boolean degraded,
+            String degradedReason) {}
 
     private static List<MessageDto> byPriority(List<MessageEntity> messages, Priority priority) {
         return messages.stream()
@@ -328,23 +387,91 @@ public class DigestService {
                 sentAt);
     }
 
-    private static SidecarClient.DigestSummaryRequest summaryRequest(DigestDto digest) {
+    /**
+     * Asks the sidecar to write the span up in prose.
+     *
+     * <p>Best effort exactly like {@link #narrate}: the range report is worth reading without a
+     * paragraph, and a narrator that is down must not turn a working report into an error.
+     */
+    public DigestRangeDto narrateRange(DigestRangeDto range) {
+        if (!properties.getDigest().isNarrative()) {
+            return range;
+        }
+        try {
+            String narrative = sidecarClient.summarise(summaryRequest(range)).orElse(null);
+            return narrative == null ? range : withNarrative(range, narrative);
+        } catch (Exception exception) {
+            log.warn(
+                    "Could not narrate the range {} to {}: {}",
+                    range.from(),
+                    range.to(),
+                    exception.getMessage());
+            return range;
+        }
+    }
+
+    private static DigestRangeDto withNarrative(DigestRangeDto range, String narrative) {
+        return new DigestRangeDto(
+                range.from(),
+                range.to(),
+                range.days(),
+                range.counts(),
+                narrative,
+                range.high(),
+                range.normal(),
+                range.noise(),
+                range.alerts(),
+                range.unclassified(),
+                range.degraded(),
+                range.degradedReason());
+    }
+
+    private SidecarClient.DigestSummaryRequest summaryRequest(DigestDto digest) {
         return new SidecarClient.DigestSummaryRequest(
                 digest.date(),
+                null,
+                null,
                 digest.counts(),
-                digest.high().stream().map(DigestService::item).toList(),
-                digest.normal().stream().map(DigestService::item).toList(),
+                digest.high().stream().map(message -> item(message, false)).toList(),
+                digest.normal().stream().map(message -> item(message, false)).toList(),
                 digest.noise().categories(),
-                digest.alerts().stream()
-                        .filter(alert -> alert.resolvedAt() == null)
-                        .map(AlertEventDto::title)
-                        .toList(),
+                openAlertTitles(digest.alerts()),
                 digest.unclassified());
     }
 
-    private static SidecarClient.DigestSummaryRequest.Item item(MessageDto message) {
+    /**
+     * The same request for a span. The per-message date is only sent here: over several days "who
+     * wrote when" is half of what the paragraph is for, while on a single day it would be the same
+     * string on every line and pure prompt weight.
+     */
+    private SidecarClient.DigestSummaryRequest summaryRequest(DigestRangeDto range) {
+        return new SidecarClient.DigestSummaryRequest(
+                null,
+                range.from(),
+                range.to(),
+                range.counts(),
+                range.high().stream().map(message -> item(message, true)).toList(),
+                range.normal().stream().map(message -> item(message, true)).toList(),
+                range.noise().categories(),
+                openAlertTitles(range.alerts()),
+                range.unclassified());
+    }
+
+    private static List<String> openAlertTitles(List<AlertEventDto> alerts) {
+        return alerts.stream()
+                .filter(alert -> alert.resolvedAt() == null)
+                .map(AlertEventDto::title)
+                .toList();
+    }
+
+    private SidecarClient.DigestSummaryRequest.Item item(MessageDto message, boolean withDate) {
         return new SidecarClient.DigestSummaryRequest.Item(
-                message.senderName(), message.subject(), message.summary());
+                message.senderName(),
+                message.subject(),
+                message.summary(),
+                withDate
+                        ? LocalDate.ofInstant(message.receivedAt(), properties.getTimezone())
+                        : null);
     }
 
     /**
