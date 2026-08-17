@@ -94,10 +94,14 @@ public class MailAccountService {
                 .findById(accountId)
                 .ifPresent(
                         account -> {
-                            accountRepository.delete(account);
-                            // Explicit as well as the FK cascade: Hibernate does not necessarily
-                            // see the database-level cascade within this persistence context.
+                            // Child first. Explicit as well as the FK cascade, because Hibernate
+                            // does not see the database-level cascade within this persistence
+                            // context — but it has to run *before* the parent delete: the other
+                            // order lets Postgres cascade the row away first, and Hibernate then
+                            // fails its own delete with "expected row count 1 but was 0".
                             syncStateRepository.deleteById(accountId);
+                            syncStateRepository.flush();
+                            accountRepository.delete(account);
                             log.info(
                                     "Disconnected {} account {}",
                                     account.getProvider().wire(),
