@@ -19,6 +19,15 @@ public class NtfyClient {
 
     private volatile boolean healthy = true;
 
+    /**
+     * The charset has to be spelled out: Spring's String converter falls back to ISO-8859-1 for a
+     * {@code text/plain} without one, and ntfy only treats a body as the message text when it is
+     * valid UTF-8 — a single umlaut in latin-1 makes it publish the digest as a .txt attachment
+     * instead.
+     */
+    private static final MediaType UTF8_TEXT =
+            new MediaType(MediaType.TEXT_PLAIN, StandardCharsets.UTF_8);
+
     public NtfyClient(RestClient.Builder builder, HermesProperties properties) {
         this.config = properties.getNtfy();
         this.restClient =
@@ -56,7 +65,7 @@ public class NtfyClient {
                                 if (notification.clickUrl() != null) {
                                     headers.set("Click", notification.clickUrl());
                                 }
-                                headers.setContentType(MediaType.TEXT_PLAIN);
+                                headers.setContentType(UTF8_TEXT);
                             })
                     .body(notification.body())
                     .retrieve()
