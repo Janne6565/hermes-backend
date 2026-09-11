@@ -39,6 +39,12 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- /actuator/prometheus, scraped by the in-cluster Grafana Alloy via the ServiceMonitor
+             in hermes-deployment. Without it the exposure include below serves a 404. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <!-- Spring Boot 4 makes JSON opt-in; without this there is no ObjectMapper bean at all. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -3,7 +3,9 @@ package com.janne6565.hermes.client;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.janne6565.hermes.configuration.HermesProperties;
+import com.janne6565.hermes.services.metrics.HermesMetrics;
 import com.sun.net.httpserver.HttpServer;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
@@ -43,7 +45,10 @@ class NtfyClientTest {
             properties.getNtfy().setTopic("hermes-mail");
 
             boolean published =
-                    new NtfyClient(RestClient.builder(), properties)
+                    new NtfyClient(
+                                    RestClient.builder(),
+                                    properties,
+                                    new HermesMetrics(new SimpleMeterRegistry()))
                             .publish(NtfyClient.Notification.normal("Digest", body, "newspaper"));
 
             assertThat(published).isTrue();

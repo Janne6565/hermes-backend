@@ -1,6 +1,7 @@
 package com.janne6565.hermes.client;
 
 import com.janne6565.hermes.configuration.HermesProperties;
+import com.janne6565.hermes.services.metrics.HermesMetrics;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
@@ -16,6 +17,7 @@ public class NtfyClient {
 
     private final RestClient restClient;
     private final HermesProperties.Ntfy config;
+    private final HermesMetrics metrics;
 
     private volatile boolean healthy = true;
 
@@ -28,8 +30,10 @@ public class NtfyClient {
     private static final MediaType UTF8_TEXT =
             new MediaType(MediaType.TEXT_PLAIN, StandardCharsets.UTF_8);
 
-    public NtfyClient(RestClient.Builder builder, HermesProperties properties) {
+    public NtfyClient(
+            RestClient.Builder builder, HermesProperties properties, HermesMetrics metrics) {
         this.config = properties.getNtfy();
+        this.metrics = metrics;
         this.restClient =
                 builder.baseUrl(config.getBaseUrl())
                         .requestFactory(requestFactory(config.getTimeout()))
@@ -71,9 +75,11 @@ public class NtfyClient {
                     .retrieve()
                     .toBodilessEntity();
             healthy = true;
+            metrics.ntfyPublished(true);
             return true;
         } catch (Exception exception) {
             healthy = false;
+            metrics.ntfyPublished(false);
             log.error(
                     "ntfy publish failed for '{}': {}",
                     notification.title(),

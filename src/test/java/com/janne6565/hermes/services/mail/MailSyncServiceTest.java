@@ -18,6 +18,7 @@ import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.auth.MailAccountService;
 import com.janne6565.hermes.services.classification.ClassificationService;
+import com.janne6565.hermes.services.metrics.HermesMetrics;
 import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
@@ -53,6 +54,7 @@ class MailSyncServiceTest {
     @Mock private MailProviderRegistry providers;
     @Mock private AccountSyncStateService syncStateService;
     @Mock private ClassificationService classificationService;
+    @Mock private HermesMetrics metrics;
     @Mock private MailProvider gmailProvider;
     @Mock private MailProvider outlookProvider;
 

@@ -13,6 +13,7 @@ import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.MessageRepository;
 import com.janne6565.hermes.services.categories.CategoryMatcher;
 import com.janne6565.hermes.services.categories.CategoryService;
+import com.janne6565.hermes.services.metrics.HermesMetrics;
 import com.janne6565.hermes.services.notification.NotificationService;
 import com.janne6565.hermes.services.rules.RuleEngine;
 import java.util.List;
@@ -42,6 +43,7 @@ public class ClassificationService {
     private final CategoryMatcher categoryMatcher;
     private final CategoryService categoryService;
     private final HermesProperties properties;
+    private final HermesMetrics metrics;
 
     /**
      * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
@@ -81,6 +83,7 @@ public class ClassificationService {
 
         applyCategory(message, verdict.category());
         messageRepository.save(message);
+        metrics.messageTriaged(verdict.priority(), verdict.classifiedBy());
 
         if (verdict.priority() == Priority.HIGH) {
             notificationService.pushHighPriorityMail(message);

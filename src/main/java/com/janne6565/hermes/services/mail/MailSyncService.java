@@ -8,6 +8,7 @@ import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.SyncResultDto;
 import com.janne6565.hermes.services.auth.MailAccountService;
 import com.janne6565.hermes.services.classification.ClassificationService;
+import com.janne6565.hermes.services.metrics.HermesMetrics;
 import jakarta.annotation.PreDestroy;
 import java.io.IOException;
 import java.util.List;
@@ -39,6 +40,7 @@ public class MailSyncService {
     private final MailProviderRegistry providers;
     private final AccountSyncStateService syncStateService;
     private final ClassificationService classificationService;
+    private final HermesMetrics metrics;
 
     /**
      * Set on shutdown so an in-flight batch stops at the next message boundary.
@@ -129,6 +131,7 @@ public class MailSyncService {
             } catch (Exception exception) {
                 // Contained per account: a broken Outlook token must not stop Gmail from syncing.
                 failed++;
+                metrics.syncFailed(HermesMetrics.SyncStage.ACCOUNT);
                 log.error(
                         "Sync failed for {}: {}",
                         account.email(),
@@ -199,6 +202,7 @@ public class MailSyncService {
             } catch (IOException exception) {
                 // One unreadable message must not stall the batch — but the cursor still advances
                 // past it, so log loudly enough that a systematic failure is visible.
+                metrics.syncFailed(HermesMetrics.SyncStage.MESSAGE);
                 log.error("Failed to fetch message {}: {}", externalId, exception.getMessage());
             }
         }

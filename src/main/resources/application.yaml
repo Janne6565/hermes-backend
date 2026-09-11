@@ -32,12 +32,49 @@ management:
   endpoints:
     web:
       exposure:
+        # Health (k8s probes) + the Prometheus scrape. Kept on the app port: Traefik routes only
+        # /api, /v3/api-docs and two exact /api paths of this host to the backend (everything else
+        # goes to the frontend), so /actuator is reachable from inside the cluster only.
         include: health,info,prometheus
   endpoint:
     health:
       probes:
         enabled: true
       show-details: never
+  # Every label combination is one series, and the whole cluster shares Grafana Cloud's free tier
+  # of 10,000. Hence the trims below.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      # Client-side percentiles, NOT a bucket histogram: Alloy drops every `_bucket` series before
+      # it leaves the cluster, so a histogram would cost the scrape and deliver nothing.
+      #
+      # The trade-off: these are computed inside this JVM, so they cannot be re-aggregated across
+      # replicas and a quantile not listed here cannot be recovered afterwards. Fine, because this
+      # service is a deliberate singleton (the poll loop would double-push with two replicas).
+      #
+      # No median: ~36 routes, and every route x status pair costs one series per quantile. The
+      # mean (sum / count) is there for free if a "typical" number is ever wanted.
+      percentiles-histogram:
+        http.server.requests: false
+      percentiles:
+        http.server.requests: 0.95, 0.99
+    # Meter families nobody reads. Kept: http.server.requests, jvm.memory, jvm.gc, jvm.threads,
+    # process/system cpu, process.uptime, hikaricp, jdbc.connections, logback.events, disk.
+    enable:
+      spring.security: false
+      spring.data.repository: false
+      tomcat.sessions: false
+      jvm.buffer: false
+      jvm.classes: false
+      jvm.compilation: false
+      executor: false
+      tasks.scheduled: false
+      application.started.time: false
+      application.ready.time: false
+      http.server.requests.active: false
+      process.files: false
 
 springdoc:
   api-docs:
