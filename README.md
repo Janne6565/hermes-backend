@@ -25,6 +25,14 @@ classifier sidecar over pod-local HTTP. If the sidecar is down, out of credit, o
 is stored as `normal` and flagged `fallback`: it never pushes, it shows as a warning line in the
 digest, and the 03:00 job re-classifies it once the sidecar is healthy again.
 
+**Automations ride along.** The user's natural-language triggers ("any mail about AWS pricing")
+are sent with every classifier call, and the sidecar answers with the ones a mail matches — no
+extra LLM turn. A match runs the automation's actions on top of the triage: a `direct` push (held
+in quiet hours), an `important` urgent push (pierces quiet hours), and/or a webhook POST carrying
+sender, subject, summary and verdict — never the body. Priority is never touched. Mail settled by a
+hard rule is still asked about while any automation is enabled; mail the sidecar missed is matched
+by the 03:00 retry, which runs webhooks but never pushes.
+
 **Interrupting is centralised.** `NotificationService` is the only code path that can make the
 phone buzz, and both gates — shadow mode and quiet hours — live there rather than at the call
 sites.
@@ -65,6 +73,8 @@ generates from.
 | `POST /api/v1/rules/feedback` | "This shouldn't have pinged me" → auto-creates the rule |
 | `GET /api/v1/rules/dry-run` | What a candidate rule would have matched, before you create it |
 | `GET /api/v1/rules/feedback/recent` | The rules your own corrections produced |
+| `GET/POST/PATCH/DELETE /api/v1/automations` | Natural-language triggers and their actions; `GET` includes recent runs |
+| `POST /api/v1/automations/{id}/test` | Run an automation's actions once with a placeholder — bypasses shadow mode and quiet hours |
 | `POST /api/v1/events/alert` | Grafana / SigNoz intake (`X-Hermes-Token`) |
 | `GET /api/v1/events/alerts/overview` | The alerts screen in one read: open, resolved, routing, sources |
 | `POST /api/v1/events/alerts/{id}/acknowledge` | Mark an alert seen — does *not* resolve it |

@@ -192,13 +192,34 @@ public class SidecarClient {
      *     answering with a bucket that no longer exists is a silent miscategorisation.
      */
     public record ClassificationRequest(
-            String sender, String subject, String snippet, List<String> categories) {}
+            String sender,
+            String subject,
+            String snippet,
+            List<String> categories,
+            List<AutomationTrigger> automations) {
+
+        /** No automations: the category backfill must never fire one for months-old mail. */
+        public ClassificationRequest(
+                String sender, String subject, String snippet, List<String> categories) {
+            this(sender, subject, snippet, categories, List.of());
+        }
+    }
+
+    /**
+     * One of the user's natural-language triggers.
+     *
+     * @param id echoed back in {@link ClassificationResponse#automations()} when it matches. The
+     *     model itself only ever sees a number; the sidecar maps it back.
+     */
+    public record AutomationTrigger(String id, String trigger) {}
 
     /**
      * @param category one of the names from the request, or null if the classifier declined.
      * @param categoryConfidence 0..1; below the configured threshold the message is queued for the
      *     user rather than accepted quietly.
      * @param categoryAlternative the runner-up, offered as the second chip in that queue.
+     * @param automations ids of the request's automations this mail matched. Never null — an older
+     *     sidecar that does not know the field simply matches nothing.
      */
     public record ClassificationResponse(
             Priority priority,
@@ -206,7 +227,30 @@ public class SidecarClient {
             String summary,
             String category,
             Float categoryConfidence,
-            String categoryAlternative) {}
+            String categoryAlternative,
+            List<String> automations) {
+
+        public ClassificationResponse {
+            automations = automations == null ? List.of() : List.copyOf(automations);
+        }
+
+        public ClassificationResponse(
+                Priority priority,
+                String reason,
+                String summary,
+                String category,
+                Float categoryConfidence,
+                String categoryAlternative) {
+            this(
+                    priority,
+                    reason,
+                    summary,
+                    category,
+                    categoryConfidence,
+                    categoryAlternative,
+                    null);
+        }
+    }
 
     /**
      * One day — or one span — as the narrator sees it.

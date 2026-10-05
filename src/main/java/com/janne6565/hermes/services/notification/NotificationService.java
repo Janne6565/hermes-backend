@@ -3,7 +3,9 @@ package com.janne6565.hermes.services.notification;
 import com.janne6565.hermes.client.NtfyClient;
 import com.janne6565.hermes.configuration.HermesProperties;
 import com.janne6565.hermes.entity.AlertEventEntity;
+import com.janne6565.hermes.entity.AutomationEntity;
 import com.janne6565.hermes.entity.MessageEntity;
+import com.janne6565.hermes.model.core.AutomationAlert;
 import com.janne6565.hermes.model.core.TestPushResultDto;
 import java.time.Clock;
 import java.time.Duration;
@@ -74,6 +76,61 @@ public class NotificationService {
                         alert.getTitle(),
                         "rotating_light",
                         null));
+    }
+
+    /**
+     * Pushes a mail because one of the user's automations matched it.
+     *
+     * <p>Shadow mode holds for both levels. Quiet hours hold for {@link AutomationAlert#DIRECT}
+     * only: an {@link AutomationAlert#IMPORTANT} automation is the user saying, in advance and in
+     * writing, that this kind of mail is worth waking up for.
+     *
+     * @param test a test run from the automations screen. Skips both gates for the same reason
+     *     {@link #sendTest()} does — a test that respected shadow mode would prove nothing.
+     */
+    public PushOutcome pushAutomation(
+            AutomationEntity automation, MessageEntity message, boolean test) {
+        boolean important = automation.getAlert() == AutomationAlert.IMPORTANT;
+        if (!test && properties.isShadowMode()) {
+            log.info("Shadow mode: would have pushed automation '{}'", automation.getName());
+            return PushOutcome.SHADOW_MODE;
+        }
+        if (!test && !important && inQuietHours()) {
+            log.info("Quiet hours: holding automation '{}'", automation.getName());
+            return PushOutcome.QUIET_HOURS;
+        }
+
+        String title = message == null ? "hermes" : displayName(message.getSender());
+        String body =
+                message == null
+                        ? "Test run — this automation's push works."
+                        : "%s%n%n%s"
+                                .formatted(nullSafe(message.getSubject()), automation.getName());
+        String click =
+                message == null ? null : message.getProvider().deepLink(message.getExternalId());
+
+        boolean delivered =
+                ntfyClient.publish(
+                        new NtfyClient.Notification(
+                                title,
+                                body,
+                                important
+                                        ? NtfyClient.NtfyPriority.URGENT
+                                        : NtfyClient.NtfyPriority.HIGH,
+                                "zap",
+                                click));
+        if (delivered && message != null && message.getNotifiedAt() == null) {
+            message.setNotifiedAt(Instant.now(clock));
+        }
+        return delivered ? PushOutcome.DELIVERED : PushOutcome.FAILED;
+    }
+
+    /** Why an automation push did or did not reach the phone. */
+    public enum PushOutcome {
+        DELIVERED,
+        FAILED,
+        SHADOW_MODE,
+        QUIET_HOURS
     }
 
     /**

@@ -11,6 +11,7 @@ import com.janne6565.hermes.model.core.FetchedMessage;
 import com.janne6565.hermes.model.core.MailProviderType;
 import com.janne6565.hermes.model.core.Priority;
 import com.janne6565.hermes.repository.MessageRepository;
+import com.janne6565.hermes.services.automations.AutomationService;
 import com.janne6565.hermes.services.categories.CategoryMatcher;
 import com.janne6565.hermes.services.categories.CategoryService;
 import com.janne6565.hermes.services.metrics.HermesMetrics;
@@ -44,6 +45,7 @@ public class ClassificationService {
     private final CategoryService categoryService;
     private final HermesProperties properties;
     private final HermesMetrics metrics;
+    private final AutomationService automationService;
 
     /**
      * Cheap "have we already stored this?" check, so the sync loop can skip a known message without
@@ -88,6 +90,7 @@ public class ClassificationService {
         if (verdict.priority() == Priority.HIGH) {
             notificationService.pushHighPriorityMail(message);
         }
+        automationService.fire(message, verdict.automations(), false);
         return Optional.of(message);
     }
 
@@ -107,6 +110,7 @@ public class ClassificationService {
 
         List<MessageEntity> pending =
                 messageRepository.findByClassifiedByOrderByReceivedAtAsc(ClassifiedBy.FALLBACK);
+        List<SidecarClient.AutomationTrigger> triggers = automationService.triggers();
         int repaired = 0;
 
         for (MessageEntity message : pending) {
@@ -116,7 +120,8 @@ public class ClassificationService {
                                     message.getSender(),
                                     message.getSubject(),
                                     message.getSnippet(),
-                                    categoryService.names()));
+                                    categoryService.names(),
+                                    triggers));
             if (response.isEmpty()) {
                 log.warn("Sidecar went unhealthy mid-retry; stopping after {} messages", repaired);
                 break;
@@ -132,6 +137,8 @@ public class ClassificationService {
                     || message.getCategorySource() == CategorySource.NONE) {
                 applyCategory(message, fromModel(verdict));
             }
+            // Late: the webhook still runs, the push does not — see AutomationService#fire.
+            automationService.fire(message, verdict.automations(), true);
             repaired++;
         }
 
@@ -162,15 +169,24 @@ public class ClassificationService {
                         .map(rule -> new CategoryVerdict(rule.getCategory(), CategorySource.RULE))
                         .orElse(null);
 
+        List<SidecarClient.AutomationTrigger> triggers = automationService.triggers();
+
         Optional<RuleEngine.Match> ruleMatch = ruleEngine.evaluate(fetched);
         if (ruleMatch.isPresent()) {
             RuleEngine.Match match = ruleMatch.get();
+            Optional<SidecarClient.ClassificationResponse> secondary =
+                    secondaryAxes(fetched, byRule == null, triggers);
             return new Verdict(
                     match.priority(),
                     match.reason(),
                     truncateSubject(fetched),
                     ClassifiedBy.RULE,
-                    byRule != null ? byRule : categoryOnly(fetched));
+                    byRule != null
+                            ? byRule
+                            : secondary.map(this::fromModel).orElseGet(this::unresolvedCategory),
+                    secondary
+                            .map(SidecarClient.ClassificationResponse::automations)
+                            .orElse(List.of()));
         }
 
         Optional<SidecarClient.ClassificationResponse> llm =
@@ -179,7 +195,8 @@ public class ClassificationService {
                                 fetched.sender(),
                                 fetched.subject(),
                                 fetched.snippet(),
-                                categoryService.names()));
+                                categoryService.names(),
+                                triggers));
 
         return llm.map(
                         response ->
@@ -190,7 +207,8 @@ public class ClassificationService {
                                         ClassifiedBy.LLM,
                                         // A rule beats the model on the category too: the user's
                                         // own statement about a sender is not a hypothesis.
-                                        byRule != null ? byRule : fromModel(response)))
+                                        byRule != null ? byRule : fromModel(response),
+                                        response.automations()))
                 .orElseGet(
                         () ->
                                 new Verdict(
@@ -198,32 +216,43 @@ public class ClassificationService {
                                         "classifier unavailable",
                                         truncateSubject(fetched),
                                         ClassifiedBy.FALLBACK,
-                                        byRule != null ? byRule : unresolvedCategory()));
+                                        byRule != null ? byRule : unresolvedCategory(),
+                                        // Nothing matched because nothing was asked. The nightly
+                                        // retry evaluates the triggers once the sidecar is back.
+                                        List.of()));
     }
 
     /**
-     * Asks the classifier for a category when a priority rule already answered the other question.
+     * Asks the classifier for the category and the automation matches when a priority rule already
+     * answered the other question.
      *
      * <p>The response's priority is read and thrown away on purpose: the rule won that axis before
      * this call was made, and letting the model's opinion in through the back door is exactly the
      * leak the two-axis separation exists to prevent.
+     *
+     * <p>Automations always justify the call. A trigger like "any mail from Amazon" must fire on
+     * the Amazon mail a noise rule settled too, or it would silently cover only the mail the rules
+     * happened to miss — and once the turn is paid for, its category is used as well.
+     *
+     * @return empty when nobody needs the answer, or the sidecar could not give it. An outage must
+     *     not turn a perfectly good rule verdict into a failure: the message keeps its priority and
+     *     lands in the fallback bucket, where the backfill will find it later.
      */
-    private CategoryVerdict categoryOnly(FetchedMessage fetched) {
-        if (!properties.getCategories().isClassifyRuleHits()) {
-            return unresolvedCategory();
+    private Optional<SidecarClient.ClassificationResponse> secondaryAxes(
+            FetchedMessage fetched,
+            boolean needsCategory,
+            List<SidecarClient.AutomationTrigger> triggers) {
+        boolean wantCategory = needsCategory && properties.getCategories().isClassifyRuleHits();
+        if (!wantCategory && triggers.isEmpty()) {
+            return Optional.empty();
         }
-        return sidecarClient
-                .classify(
-                        new SidecarClient.ClassificationRequest(
-                                fetched.sender(),
-                                fetched.subject(),
-                                fetched.snippet(),
-                                categoryService.names()))
-                .map(this::fromModel)
-                // A sidecar outage must not turn a perfectly good rule verdict into a failure. The
-                // message keeps its priority and lands in the fallback bucket, where the backfill
-                // will find it later.
-                .orElseGet(this::unresolvedCategory);
+        return sidecarClient.classify(
+                new SidecarClient.ClassificationRequest(
+                        fetched.sender(),
+                        fetched.subject(),
+                        fetched.snippet(),
+                        categoryService.names(),
+                        triggers));
     }
 
     /** Maps the classifier's free-text category name onto a row, or gives up cleanly. */
@@ -261,7 +290,8 @@ public class ClassificationService {
             String reason,
             String summary,
             ClassifiedBy classifiedBy,
-            CategoryVerdict category) {}
+            CategoryVerdict category,
+            List<String> automations) {}
 
     /**
      * @param confidence null for anything a rule settled — a rule is not a guess with a number.

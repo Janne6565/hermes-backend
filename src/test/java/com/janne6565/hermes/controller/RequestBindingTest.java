@@ -1,6 +1,7 @@
 package com.janne6565.hermes.controller;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -126,5 +127,56 @@ class RequestBindingTest {
                                         {"messageId":"%s"}"""
                                                 .formatted(ABSENT_UUID)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void createAutomationBindsTheBodyTheNewAutomationFormSends() throws Exception {
+        // Lowercase wire enum and an empty webhook — exactly what the form posts when only an
+        // alert is chosen.
+        mockMvc()
+                .perform(
+                        post("/api/v1/automations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {"name":"Binding probe","trigger":"any mail from Amazon",\
+                                        "alert":"important","webhookUrl":""}"""))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void anAutomationWithNoActionIsRejected() throws Exception {
+        mockMvc()
+                .perform(
+                        post("/api/v1/automations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {"name":"Does nothing","trigger":"anything",\
+                                        "alert":"none","webhookUrl":""}"""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aNonHttpWebhookIsRejected() throws Exception {
+        mockMvc()
+                .perform(
+                        post("/api/v1/automations")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content(
+                                        """
+                                        {"name":"File URL","trigger":"anything",\
+                                        "alert":"none","webhookUrl":"file:///etc/passwd"}"""))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void pausingAnAutomationBindsTheToggleBody() throws Exception {
+        mockMvc()
+                .perform(
+                        patch("/api/v1/automations/%s".formatted(ABSENT_UUID))
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"enabled\":false}"))
+                .andExpect(status().isNotFound());
     }
 }
